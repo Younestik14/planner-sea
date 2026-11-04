@@ -174,6 +174,31 @@ details summary{cursor:pointer;color:var(--mut);margin-top:16px}
 #mbox button{display:flex;align-items:center;gap:8px;text-align:left;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
 #mbox button .av{margin:0}
 .msg.ready .bd{background:#10241a;border-color:#1f4d2e}
+.qa{position:absolute;right:6px;bottom:6px;display:none;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:2px}
+.card:hover .qa,.card:focus-within .qa{display:flex}
+.pop{position:static;margin-top:8px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 10px 30px #0009;max-height:260px;overflow-y:auto;cursor:default}
+.pop label{display:flex;align-items:center;gap:8px;margin:0;padding:4px;color:var(--txt);font-size:13px;cursor:pointer;border-radius:6px}
+.pop label:hover{background:var(--panel2)}
+.pop label input{width:auto}
+.pop .av{margin:0}
+.card.selected{outline:2px solid var(--acc)}
+.selbox{position:absolute;top:8px;right:8px;width:18px;height:18px;accent-color:var(--acc)}
+.compact .card{padding:6px 9px}
+.compact .card .tags,.compact .card .meta>span:not(.avs):not(.chip){display:none}
+.compact .card .ttl{margin:0 0 4px;font-size:13px}
+.compact .cards{gap:5px}
+.bulk{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--panel);border:1px solid var(--acc);border-radius:12px;padding:10px 14px;box-shadow:0 12px 40px #000a;z-index:12;max-width:calc(100vw - 24px)}
+.mact{float:right;display:none}
+.msg .bd:hover .mact{display:inline-flex}
+.mact .ico{padding:0 4px}
+.quote{border-left:3px solid var(--acc);background:#0003;border-radius:4px;padding:4px 8px;margin:4px 0;font-size:12px;color:var(--mut)}
+.reacts{display:flex;gap:4px;margin-top:6px}
+.reacts button{background:none;border:1px solid transparent;border-radius:999px;padding:0 6px;font-size:12px;opacity:.35}
+.reacts button.has{opacity:1;border-color:var(--line);background:var(--panel)}
+.reacts button.on{border-color:var(--acc);background:#23264a}
+.msg .bd:hover .reacts button{opacity:1}
+kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:2px 8px;font:600 12px ui-monospace,monospace;min-width:54px;text-align:center}
+@media(hover:none){.qa{display:flex;position:static;margin-top:6px;width:max-content}.mact{display:inline-flex}.reacts button{opacity:1}}
 @media(max-width:800px){.wl{grid-template-columns:1fr}.cal .dc{min-height:60px}.search{flex:1}}
 @media(max-width:800px){
   .layout{flex-direction:column}
@@ -204,7 +229,8 @@ const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { flowType: 'pkce' } })
 
 const S = { user:null, me:null, profiles:[], projects:[], notifs:[], buckets:[], tasks:[], activity:[],
             pid:null, tid:null, comments:[], tact:[], view:'board', onlyMine:false, panel:null, modal:null, seen:null,
-            mine:[], label:'', cal:null, found:null };
+            mine:[], label:'', cal:null, found:null, reads:{}, reacts:[], sel:new Set(), selMode:false, pop:null, reply:null,
+            hidden:new Set(), sort: ls('sort') || 'manual', compact: !!ls('compact') };
 const PRIO = { urgente:['Urgente','#ef4444','‼'], importante:['Importante','#f59e0b','!'], media:['Media','#3b82f6','●'], baja:['Baja','#6b7280','↓'] };
 const STATUS = { no_iniciada:'No iniciada', en_curso:'En curso', completada:'Completada' };
 const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899','#a855f7','#84cc16'];
@@ -318,19 +344,36 @@ async function start(){
   readHash();
   await loadProject();
   await loadTask();
+  if (!S.summaryDone) await buildSummary();
+  else if (Date.now() - new Date(me.last_seen_at || 0) > 300000) sb.from('profiles').update({ last_seen_at: new Date().toISOString() }).eq('id', me.id).then(() => {});
   keep(() => { render(); renderModal(); });
+}
+
+// Resumen de lo que ha pasado desde tu última visita (solo al entrar).
+async function buildSummary(){
+  S.summaryDone = true;
+  const since = S.me.last_seen_at;
+  await q(sb.from('profiles').update({ last_seen_at: new Date().toISOString() }).eq('id', S.me.id));
+  if (!since || S.modal) return;
+  const ev = await q(sb.from('activity').select('*').gt('created_at', since).neq('actor_id', S.me.id).order('created_at', { ascending:false }).limit(200));
+  if (!ev.length) return;
+  S.summary = { since, ev }; S.modal = 'summary';
 }
 
 /* ============ DATOS ============ */
 async function loadBase(){
-  const [profiles, projects, notifs, mine] = await Promise.all([
+  const [profiles, projects, notifs, mine, reads] = await Promise.all([
     q(sb.from('profiles').select('*')),
     q(sb.from('projects').select('*, tasks(status)').order('created_at')),
     q(sb.from('notifications').select('*').order('created_at', { ascending:false }).limit(80)),
     q(sb.from('tasks').select('id,title,status,priority,due_date,project_id,review_requested,labels,task_assignees!inner(user_id)').eq('task_assignees.user_id', S.me.id)),
+    q(sb.from('task_reads').select('task_id,read_at')),
   ]);
   S.profiles = profiles; S.projects = projects; S.mine = mine;
-  if (S.seen) notifs.filter(n => !n.read && !S.seen.has(n.id)).forEach(n => toast('🔔 ' + n.message));
+  S.reads = Object.fromEntries(reads.map(r => [r.task_id, r.read_at]));
+  const fresh = S.seen ? notifs.filter(n => !n.read && !S.seen.has(n.id)) : [];
+  if (fresh.length > 2) toast(`🔔 Tienes ${fresh.length} notificaciones nuevas`); else fresh.forEach(n => toast('🔔 ' + n.message));
+  if (fresh.length) beep();
   S.seen = new Set(notifs.map(n => n.id));
   S.notifs = notifs;
 }
@@ -339,7 +382,7 @@ async function loadProject(){
   if (!S.pid) { S.buckets = []; S.tasks = []; S.activity = []; return; }
   const [b, t, a] = await Promise.all([
     q(sb.from('buckets').select('*').eq('project_id', S.pid).order('position')),
-    q(sb.from('tasks').select('*, task_assignees(user_id), subtasks(id,done), comments(count)').eq('project_id', S.pid).order('position')),
+    q(sb.from('tasks').select('*, task_assignees(user_id), subtasks(id,done), comments(created_at,user_id)').eq('project_id', S.pid).order('position')),
     q(sb.from('activity').select('*').eq('project_id', S.pid).order('created_at', { ascending:false }).limit(300)),
   ]);
   S.buckets = b; S.tasks = t; S.activity = a;
@@ -353,6 +396,10 @@ async function loadTask(){
     q(sb.from('subtasks').select('*').eq('task_id', S.tid).order('position')),
   ]);
   S.comments = c; S.tact = a; S.subs = st;
+  S.reacts = c.length ? await q(sb.from('comment_reactions').select('*').in('comment_id', c.map(x => x.id))) : [];
+  // Marca el chat como leído (task_reads no está en tiempo real, así que no provoca bucles)
+  const now = new Date().toISOString(); S.reads[S.tid] = now;
+  sb.from('task_reads').upsert({ user_id: S.me.id, task_id: S.tid, read_at: now }).then(() => {});
 }
 
 // Tiempo real: cualquier cambio en la base de datos refresca lo que estás viendo.
@@ -365,15 +412,35 @@ function subscribe(){
 
 function readHash(){
   const h = new URLSearchParams(location.hash.slice(1));
+  if (!S.restored) { S.restored = true; if (!h.get('p')) { S.pid = ls('pid') || S.pid; S.view = ls('view') || S.view; } }
   if (h.get('p')) S.pid = h.get('p');
   if (h.get('t')) { S.tid = h.get('t'); S.modal = 'task'; }
 }
-function setHash(){ history.replaceState(null, '', '#' + new URLSearchParams({ ...(S.pid && {p:S.pid}), ...(S.tid && {t:S.tid}) })); }
+function setHash(){ history.replaceState(null, '', '#' + new URLSearchParams({ ...(S.pid && {p:S.pid}), ...(S.tid && {t:S.tid}) })); ls('pid', S.pid); ls('view', S.view); }
+function setView(v){ S.view = v; S.sel.clear(); S.selMode = false; setHash(); render(); }
+const taskLink = (pid, tid) => location.origin + location.pathname + '#' + new URLSearchParams({ p: pid, t: tid });
+// Preferencias de este navegador (no pasa nada si el navegador las bloquea)
+function ls(k, v){ try { if (v === undefined) return JSON.parse(localStorage.getItem('psea.' + k)); localStorage.setItem('psea.' + k, JSON.stringify(v)); } catch { return null; } }
+let actx;
+function beep(){
+  if (ls('sound') === false) return;
+  try { actx ||= new AudioContext(); const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.value = 880; g.gain.setValueAtTime(0.08, actx.currentTime); g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.35);
+    o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + 0.35); } catch {}
+}
+function toastUndo(msg, undo, commit){
+  const el = document.createElement('div'); el.className = 'toast';
+  el.innerHTML = `${esc(msg)} <button class="btn" style="margin-left:10px;padding:3px 10px">↶ Deshacer</button>`;
+  const t = setTimeout(() => { el.remove(); commit?.(); }, 5000);
+  el.querySelector('button').onclick = () => { clearTimeout(t); el.remove(); undo(); };
+  $('#toasts').append(el);
+}
 
 /* ============ PINTAR ============ */
 function render(){
   const unread = S.notifs.filter(n => !n.read).length;
   const pending = S.profiles.filter(p => !p.approved && !p.is_admin).length;
+  document.title = unread ? `(${unread}) Planner SEA` : 'Planner SEA';
   $('#app').innerHTML = `
   <header>
     <div class="brand"><i></i><span>Planner SEA</span></div>
@@ -385,11 +452,14 @@ function render(){
     <button class="ico" onclick="togglePanel('menu')" style="padding:0">${av(S.me.id, 'l')}</button>
     ${S.panel === 'notifs' ? notifsHTML() : ''}
     ${S.panel === 'menu' ? `<div class="menu"><div style="padding:8px 10px"><b>${esc(S.me.full_name)}</b><br><small class="mut">${esc(S.me.email)}${isAdmin() ? ' · Admin' : ''}</small></div>
-      <button onclick="renameMe()">✏️ Cambiar mi nombre</button><button onclick="logout()">🚪 Cerrar sesión</button></div>` : ''}
+      <button onclick="renameMe()">✏️ Cambiar mi nombre</button>
+      <button onclick="ls('sound', ls('sound') === false);render()">${ls('sound') === false ? '🔕 Sonido desactivado' : '🔔 Sonido activado'}</button>
+      <button onclick="S.panel=null;openModal('keys')">⌨️ Atajos de teclado</button>
+      <button onclick="logout()">🚪 Cerrar sesión</button></div>` : ''}
   </header>
   <div class="layout">
     <aside>
-      <button class="pj ${S.view === 'mine' ? 'on' : ''}" style="--c:var(--acc)" onclick="S.view='mine';S.tid=null;setHash();render()">
+      <button class="pj ${S.view === 'mine' ? 'on' : ''}" style="--c:var(--acc)" onclick="S.tid=null;setView('mine')">
         <div class="n">📌 Mis tareas <span class="cnt">${S.mine.filter(t => t.status !== 'completada').length} pendientes</span></div></button>
       <h4>Proyectos</h4>
       ${S.projects.filter(p => !p.is_template).map(p => {
@@ -404,7 +474,20 @@ function render(){
       ${isAdmin() ? `<button class="btn" style="margin-top:8px;justify-content:center" onclick="openModal('project-new')">+ Nuevo proyecto</button>` : ''}
     </aside>
     <main>${mainHTML()}</main>
-  </div>`;
+  </div>
+  ${S.selMode && S.sel.size ? bulkBarHTML() : ''}`;
+}
+
+function bulkBarHTML(){
+  const sel = `style="width:auto;padding:5px 8px"`;
+  return `<div class="bulk"><b>${S.sel.size} seleccionadas</b>
+    <select ${sel} onchange="bulk('assign',this.value)"><option value="">👤 Asignar a…</option>${members().map(p => `<option value="${p.id}">${esc(pname(p.id))}</option>`).join('')}</select>
+    <input type="date" ${sel} title="Fecha límite" onchange="bulk('patch',{due_date:this.value||null})">
+    <select ${sel} onchange="this.value&&bulk('patch',{status:this.value})"><option value="">Estado…</option>${Object.entries(STATUS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+    <select ${sel} onchange="this.value&&bulk('patch',{priority:this.value})"><option value="">Prioridad…</option>${Object.entries(PRIO).map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select>
+    <select ${sel} onchange="this.value&&bulk('patch',{bucket_id:this.value})"><option value="">Mover a…</option>${S.buckets.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select>
+    <button class="btn bad" onclick="bulk('delete')">🗑 Eliminar</button>
+    <button class="btn" onclick="S.sel.clear();render()">Quitar selección</button></div>`;
 }
 
 function mainHTML(){
@@ -434,9 +517,14 @@ function mainHTML(){
   </div>
   <div class="tabs" style="--c:${esc(p.color)}">
     ${[['board','Tablero'],['cal','Calendario'],['team','Equipo'],['files','Archivos'],['hist','Historial']].map(([k, n]) =>
-      `<button class="tab ${S.view === k ? 'on' : ''}" onclick="S.view='${k}';render()">${n}</button>`).join('')}
+      `<button class="tab ${S.view === k ? 'on' : ''}" onclick="setView('${k}')">${n}</button>`).join('')}
     <div class="sp"></div>
-    ${S.view === 'board' ? `${labelsOf().length ? `<select style="width:auto;padding:4px 8px;margin:0 8px 6px 0" onchange="S.label=this.value;render()"><option value="">Todas las etiquetas</option>${labelsOf().map(l => `<option ${l === S.label ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>` : ''}
+    ${S.view === 'board' ? `
+      ${isAdmin() ? `<button class="ico" style="margin-bottom:6px;${S.selMode ? 'color:var(--txt);background:var(--panel2)' : ''}" onclick="S.selMode=!S.selMode;S.sel.clear();render()" title="Seleccionar varias tareas para editarlas a la vez">☑ ${S.selMode ? 'Salir de selección' : 'Seleccionar'}</button>` : ''}
+      <button class="ico" style="margin-bottom:6px" onclick="S.compact=!S.compact;ls('compact',S.compact);render()" title="Tarjetas más pequeñas">${S.compact ? '▤ Vista normal' : '▭ Vista compacta'}</button>
+      <select style="width:auto;padding:4px 8px;margin:0 8px 6px 0" onchange="S.sort=this.value;ls('sort',S.sort);render()" title="Ordenar tarjetas">
+        ${[['manual','Orden manual'],['due','Por fecha'],['prio','Por prioridad'],['person','Por persona']].map(([k, n]) => `<option value="${k}" ${S.sort === k ? 'selected' : ''}>↕ ${n}</option>`).join('')}</select>
+      ${labelsOf().length ? `<select style="width:auto;padding:4px 8px;margin:0 8px 6px 0" onchange="S.label=this.value;render()"><option value="">Todas las etiquetas</option>${labelsOf().map(l => `<option ${l === S.label ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>` : ''}
       <label class="tg"><input type="checkbox" ${S.onlyMine ? 'checked' : ''} onchange="S.onlyMine=this.checked;render()"> Solo mis tareas</label>` : ''}
   </div>
   ${{ board: boardHTML, cal: calHTML, team: teamHTML, files: filesHTML }[S.view]?.() ?? `<div class="hist">${histHTML(S.activity, true)}</div>`}`;
@@ -508,36 +596,63 @@ function filesHTML(){
     <iframe src="https://drive.google.com/embeddedfolderview?id=${encodeURIComponent(id)}#list" style="flex:1;min-height:65vh;border:1px solid var(--line);border-radius:10px;background:#fff" title="Archivos de Drive"></iframe></div>`;
 }
 
+const PRANK = { urgente:0, importante:1, media:2, baja:3 };
+// Tareas de una columna tal y como se ven (filtros + orden). Lo usan el tablero, el arrastre y las flechas.
+function colTasks(bid){
+  const cmp = {
+    manual: (x, y) => x.position - y.position,
+    due: (x, y) => (x.due_date || '9999').localeCompare(y.due_date || '9999'),
+    prio: (x, y) => PRANK[x.priority] - PRANK[y.priority],
+    person: (x, y) => (x.task_assignees[0] ? pname(x.task_assignees[0].user_id) : '~').localeCompare(y.task_assignees[0] ? pname(y.task_assignees[0].user_id) : '~'),
+  }[S.sort] || ((x, y) => x.position - y.position);
+  return S.tasks.filter(t => (t.bucket_id || null) === bid && !S.hidden.has(t.id)
+      && (!S.onlyMine || t.task_assignees.some(a => a.user_id === S.me.id)) && (!S.label || (t.labels || []).includes(S.label)))
+    .sort((x, y) => (x.status === 'completada') - (y.status === 'completada') || cmp(x, y) || x.position - y.position);
+}
+const visibleBuckets = () => S.buckets.filter(b => !S.hidden.has(b.id));
+function boardOrder(){ return [...visibleBuckets().map(b => b.id), null].flatMap(colTasks); }
+
 function boardHTML(){
   const A = isAdmin();
-  const col = (b, ts) => {
-    ts = ts.filter(t => (!S.onlyMine || t.task_assignees.some(a => a.user_id === S.me.id)) && (!S.label || (t.labels || []).includes(S.label)))
-           .sort((x, y) => (x.status === 'completada') - (y.status === 'completada') || x.position - y.position);
-    const dnd = A && b ? `ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="dropTask(event,'${b.id}')"` : '';
+  const col = b => {
+    const bid = b?.id || null, ts = colTasks(bid);
+    if (!b && !ts.length) return '';
+    const dnd = A && b ? `ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="dropOnCol(event,'${b.id}')"` : '';
     return `<section class="col" ${dnd}>
-      <div class="colh"><span>${esc(b ? b.name : 'Sin columna')}</span><span class="cnt">${ts.length}</span>
+      <div class="colh" ${A && b ? `draggable="true" ondragstart="event.dataTransfer.setData('text/plain','col:${b.id}')" title="Arrastra para reordenar la columna" style="cursor:grab"` : ''}>
+        <span>${esc(b ? b.name : 'Sin columna')}</span><span class="cnt">${ts.length}</span>
         ${A && b ? `<button class="ico" title="Renombrar" onclick="renameBucket('${b.id}')">✏️</button><button class="ico" title="Eliminar columna" onclick="delBucket('${b.id}')">🗑</button>` : ''}</div>
-      ${A && b ? `<div class="addt"><input id="nt-${b.id}" placeholder="+ Agregar tarea (Enter)" onkeydown="if(event.key==='Enter')addTask('${b.id}',this)"></div>` : ''}
+      ${A && b ? `<div class="addt"><input id="nt-${b.id}" placeholder="+ Agregar tarea" title="Enter para crear · pega una lista (una por línea) para crear varias" onkeydown="if(event.key==='Enter')addTask('${b.id}',this)" onpaste="pasteTasks(event,'${b.id}')"></div>` : ''}
       <div class="cards">${ts.map(cardHTML).join('') || '<div class="empty">Sin tareas</div>'}</div>
     </section>`;
   };
-  const orphan = S.tasks.filter(t => !t.bucket_id);
-  return `<div class="board">
-    ${S.buckets.map(b => col(b, S.tasks.filter(t => t.bucket_id === b.id))).join('')}
-    ${orphan.length ? col(null, orphan) : ''}
+  return `<div class="board ${S.compact ? 'compact' : ''}">
+    ${visibleBuckets().map(col).join('')}${col(null)}
     ${A ? `<button class="addcol" onclick="addBucket()">+ Agregar columna</button>` : ''}
   </div>`;
 }
 
+function unreadOf(t){ const r = new Date(S.reads[t.id] || 0); return (t.comments || []).filter(c => c.user_id !== S.me.id && new Date(c.created_at) > r).length; }
 function cardHTML(t){
   const p = PRIO[t.priority], done = t.status === 'completada', A = isAdmin();
-  const sd = t.subtasks.filter(s => s.done).length, cc = t.comments[0]?.count || 0;
-  return `<article class="card ${done ? 'done' : ''}" style="--p:${p[1]}" draggable="${A}" ondragstart="event.dataTransfer.setData('text/plain','${t.id}')" onclick="openTask('${t.id}')">
-    ${A ? `<button class="chk ${done ? 'on' : ''}" title="${done ? 'Reabrir' : 'Marcar como completada'}" onclick="event.stopPropagation();quickDone('${t.id}')">${done ? '✓' : ''}</button>` : ''}
+  const sd = t.subtasks.filter(s => s.done).length, cc = (t.comments || []).length, nu = unreadOf(t);
+  const sel = S.selMode && A, on = S.sel.has(t.id), pop = S.pop?.tid === t.id ? S.pop.kind : null;
+  const assigned = new Set(t.task_assignees.map(a => a.user_id));
+  return `<article class="card ${done ? 'done' : ''} ${on ? 'selected' : ''}" style="--p:${p[1]}" draggable="${A && !sel}"
+      ondragstart="event.dataTransfer.setData('text/plain','${t.id}')" ${A && S.sort === 'manual' ? `ondragover="event.preventDefault()" ondrop="dropOnCard(event,'${t.id}')"` : ''}
+      onclick="${sel ? `toggleSel('${t.id}')` : `openTask('${t.id}')`}">
+    ${sel ? `<input type="checkbox" class="selbox" ${on ? 'checked' : ''} aria-label="Seleccionar">` : A ? `<button class="chk ${done ? 'on' : ''}" title="${done ? 'Reabrir' : 'Marcar como completada'}" onclick="event.stopPropagation();quickDone('${t.id}')">${done ? '✓' : ''}</button>` : ''}
     <div class="tags"><span class="prio">${p[2]} ${p[0]}</span>${t.status === 'en_curso' ? '<span class="st">● En curso</span>' : ''}${t.review_requested && !done ? '<span class="rev">🔎 Para revisar</span>' : ''}${(t.labels || []).map(lblHTML).join('')}</div>
     <div class="ttl">${esc(t.title)}</div>
-    <div class="meta">${dueChip(t)}${t.subtasks.length ? `<span>☑ ${sd}/${t.subtasks.length}</span>` : ''}${cc ? `<span>💬 ${cc}</span>` : ''}${okUrl(t.drive_url) ? '<span>📁</span>' : ''}
+    <div class="meta">${dueChip(t)}${t.subtasks.length ? `<span>☑ ${sd}/${t.subtasks.length}</span>` : ''}${nu ? `<span class="chip warn">💬 ${nu} nuevo${nu > 1 ? 's' : ''}</span>` : cc ? `<span>💬 ${cc}</span>` : ''}${okUrl(t.drive_url) ? '<span>📁</span>' : ''}
       <span class="avs">${t.task_assignees.map(a => av(a.user_id)).join('')}</span></div>
+    ${A && !sel ? `<div class="qa" onclick="event.stopPropagation()">
+      <button class="ico" title="Asignar" onclick="setPop('${t.id}','who')">👤</button>
+      <button class="ico" title="Fecha límite" onclick="setPop('${t.id}','date')">📅</button>
+      <button class="ico" title="Cambiar prioridad" onclick="cyclePrio('${t.id}')">⚡</button></div>` : ''}
+    ${pop ? `<div class="pop" onclick="event.stopPropagation()">${pop === 'who'
+      ? members().map(u => `<label><input type="checkbox" ${assigned.has(u.id) ? 'checked' : ''} onchange="toggleAssignee('${u.id}',this.checked,'${t.id}')"> ${av(u.id)} ${esc(pname(u.id))}</label>`).join('')
+      : `<input type="date" value="${t.due_date || ''}" onchange="q(sb.from('tasks').update({due_date:this.value||null}).eq('id','${t.id}'));S.pop=null">`}</div>` : ''}
   </article>`;
 }
 
@@ -582,22 +697,66 @@ function histHTML(list, byDay){
 
 function notifsHTML(){
   return `<div class="np"><div class="h"><b>Notificaciones</b>${S.notifs.some(n => !n.read) ? `<button class="ico" onclick="readAll()">Marcar todo como leído</button>` : ''}</div>
-    ${S.notifs.map(n => `<div class="nt ${n.read ? '' : 'u'}" onclick="clickNotif('${n.id}')"><span class="dot"></span>
-      <div>${esc(n.message)}<br><small class="mut">${ago(n.created_at)}</small></div></div>`).join('') || '<p class="mut" style="padding:12px">No tienes notificaciones.</p>'}</div>`;
+    ${notifGroups().map(g => { const n = g[0], k = g.length;
+      const txt = k > 1 ? `${k} ${n.type === 'comment' ? 'mensajes nuevos' : 'avisos'} en «${esc(S.tasks.find(t => t.id === n.task_id)?.title || n.message.match(/"(.*)"/)?.[1] || 'la tarea')}»` : esc(n.message);
+      return `<div class="nt ${n.read ? '' : 'u'}" onclick="clickNotif('${g.map(x => x.id).join(',')}')"><span class="dot"></span>
+      <div>${txt}<br><small class="mut">${ago(n.created_at)}</small></div></div>`; }).join('') || '<p class="mut" style="padding:12px">No tienes notificaciones.</p>'}</div>`;
+}
+// Junta las notificaciones sin leer del mismo tipo y tarea ("4 mensajes nuevos en «X»").
+function notifGroups(){
+  const out = [], idx = {};
+  for (const n of S.notifs) {
+    const key = !n.read && n.task_id && ['comment', 'status', 'due'].includes(n.type) ? n.type + n.task_id : n.id;
+    if (idx[key]) idx[key].push(n); else out.push(idx[key] = [n]);
+  }
+  return out;
+}
+
+function summaryHTML(){
+  const { since, ev } = S.summary, c = a => ev.filter(e => e.action === a).length;
+  const done = ev.filter(e => e.action === 'status_changed' && e.details?.to === 'completada').length;
+  const pn = id => S.projects.find(p => p.id === id)?.name || '';
+  const stats = [['📋', c('task_created'), 'tareas nuevas'], ['💬', c('comment'), 'mensajes'], ['✔', done, 'tareas completadas'],
+                 ['✅', c('ready'), 'partes terminadas'], ['📌', c('notice'), 'avisos'], ['👤', c('assigned'), 'asignaciones']].filter(s => s[1]);
+  return `<div class="mod sm"><div class="mh"><h3>👋 Desde tu última visita</h3><button class="ico" onclick="closeModal()">✕</button></div><div class="mb">
+    <p class="mut">Cambios de tus compañeros desde el ${fmtT(since)}:</p>
+    <div class="stats">${stats.map(s => `<span class="chip">${s[0]} <b style="color:var(--txt)">${s[1]}</b> ${s[2]}</span>`).join('')}</div>
+    <div class="mini" style="margin-top:12px">${ev.slice(0, 12).map(a => `<div class="ev ${a.task_id ? 'clk' : ''}" ${a.task_id ? `onclick="closeModal();jump('${a.project_id}','${a.task_id}')"` : ''}>${av(a.actor_id)}
+      <div><b>${esc(pname(a.actor_id))}</b> ${actText(a)} <small class="mut">· ${esc(pn(a.project_id))} · ${ago(a.created_at)}</small></div></div>`).join('')}
+      ${ev.length > 12 ? `<p class="mut">…y ${ev.length - 12} más en el Historial de cada proyecto.</p>` : ''}</div>
+    <button class="btn pri" style="margin-top:14px;width:100%;justify-content:center" onclick="closeModal()">Entendido</button></div></div>`;
+}
+
+function keysHTML(){
+  const k = [['/', 'Buscar'], ['N', 'Nueva tarea en la primera columna (admin)'], ['Esc', 'Cerrar ventana'], ['← →', 'Tarea anterior / siguiente (con una tarea abierta)'],
+             ['1 … 5', 'Cambiar de pestaña: Tablero, Calendario, Equipo, Archivos, Historial'], ['M', 'Mis tareas']];
+  return `<div class="mod sm"><div class="mh"><h3>⌨️ Atajos de teclado</h3><button class="ico" onclick="closeModal()">✕</button></div><div class="mb">
+    ${k.map(([a, b]) => `<div class="mem"><kbd>${a}</kbd><div>${b}</div></div>`).join('')}</div></div>`;
 }
 
 /* ============ MODALES ============ */
 function renderModal(){
   const m = S.modal;
   if (!m) return $('#modal').innerHTML = '';
-  const html = m === 'task' ? taskHTML() : m === 'members' ? membersHTML() : projectFormHTML(m === 'project-edit' ? proj() : null);
+  const html = m === 'task' ? taskHTML() : m === 'members' ? membersHTML() : m === 'summary' ? summaryHTML() : m === 'keys' ? keysHTML()
+             : projectFormHTML(m === 'project-edit' ? proj() : null);
   if (!html) { S.modal = null; return $('#modal').innerHTML = ''; }
   $('#modal').innerHTML = `<div class="ov" onclick="if(event.target===this)closeModal()">${html}</div>`;
   const c = $('#chatlist'); if (c) c.scrollTop = c.scrollHeight;
 }
 function openModal(m){ S.modal = m; S.panel = null; render(); renderModal(); }
-function closeModal(){ S.modal = null; S.tid = null; setHash(); renderModal(); }
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.modal) closeModal(); });
+function closeModal(){ S.modal = null; S.tid = null; S.reply = null; typingChannel(null); setHash(); renderModal(); render(); }
+function navTask(d){ const list = boardOrder(), i = list.findIndex(t => t.id === S.tid), nx = list[i + d]; if (nx) openTask(nx.id); else toast(d > 0 ? 'Es la última tarea' : 'Es la primera tarea'); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { if (S.pop || S.panel) { S.pop = null; S.panel = null; return render(); } if (S.modal) return closeModal(); }
+  if (e.target.closest('input,textarea,select,[contenteditable]') || e.ctrlKey || e.metaKey || e.altKey || !S.me?.approved && !S.me?.is_admin) return;
+  if (e.key === '/') { e.preventDefault(); $('#sq')?.focus(); }
+  else if (S.modal === 'task' && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) navTask(e.key === 'ArrowRight' ? 1 : -1);
+  else if (S.modal) return;
+  else if (e.key.toLowerCase() === 'n' && isAdmin() && proj()) { e.preventDefault(); if (S.view !== 'board') setView('board'); $('.addt input')?.focus(); }
+  else if (e.key.toLowerCase() === 'm') setView('mine');
+  else if ('12345'.includes(e.key) && proj()) setView(['board', 'cal', 'team', 'files', 'hist'][+e.key - 1]);
+});
 
 function taskHTML(){
   const t = S.tasks.find(x => x.id === S.tid);
@@ -607,7 +766,10 @@ function taskHTML(){
   const opt = (obj, cur) => Object.entries(obj).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${Array.isArray(v) ? v[2] + ' ' + v[0] : v}</option>`).join('');
   return `<div class="mod">
     <div class="mh"><span class="chip" style="color:${PRIO[t.priority][1]}">${PRIO[t.priority][0]}</span><h3>${esc(proj()?.name)}</h3>
-      ${A ? `<button class="btn bad" onclick="delTask()">🗑 Eliminar</button>` : ''}<button class="ico" onclick="closeModal()" aria-label="Cerrar">✕</button></div>
+      <button class="ico" title="Tarea anterior (←)" onclick="navTask(-1)">‹</button>
+      <button class="ico" title="Tarea siguiente (→)" onclick="navTask(1)">›</button>
+      <button class="btn" onclick="copyLink()" title="Para pegarlo en WhatsApp: abre esta tarea directamente">🔗 Copiar enlace</button>
+      ${A ? `<button class="btn" onclick="dupTask()">⧉ Duplicar</button><button class="btn bad" onclick="delTask()">🗑 Eliminar</button>` : ''}<button class="ico" onclick="closeModal()" aria-label="Cerrar">✕</button></div>
     <div class="tgrid">
       <div>
         ${A ? `<input id="f-title" class="ttitle" style="margin-top:14px" value="${esc(t.title)}" onchange="if(this.value.trim())saveTask({title:this.value.trim()})">`
@@ -647,15 +809,25 @@ function taskHTML(){
       </div>
       <div>
         <b>💬 Chat de la tarea</b>
-        <div class="chat" id="chatlist">${S.comments.map(c => `<div class="msg ${c.user_id === S.me.id ? 'me' : ''} ${c.kind === 'ready' ? 'ready' : ''}">${av(c.user_id)}
-          <div class="bd"><b>${esc(pname(c.user_id))}</b> <small class="mut">${ago(c.created_at)}</small>
-          ${A ? `<button class="ico" style="float:right;padding:0 4px" title="Borrar mensaje" onclick="delComment('${c.id}')">✕</button>` : ''}
+        <div class="chat" id="chatlist">${S.comments.map(c => { const mine = c.user_id === S.me.id, rt = S.comments.find(x => x.id === c.reply_to);
+          const canEdit = mine && c.kind !== 'ready' && Date.now() - new Date(c.created_at) < 300000;
+          return `<div class="msg ${mine ? 'me' : ''} ${c.kind === 'ready' ? 'ready' : ''}">${av(c.user_id)}
+          <div class="bd"><b>${esc(pname(c.user_id))}</b> <small class="mut">${ago(c.created_at)}${c.edited_at ? ' · editado' : ''}</small>
+          <span class="mact">
+            <button class="ico" title="Responder" onclick="setReply('${c.id}')">↩</button>
+            ${canEdit ? `<button class="ico" title="Editar (5 min)" onclick="editComment('${c.id}')">✏️</button>` : ''}
+            ${A ? `<button class="ico" title="Borrar mensaje" onclick="delComment('${c.id}')">✕</button>` : ''}</span>
+          ${rt ? `<div class="quote">↩ <b>${esc(pname(rt.user_id))}</b>: ${esc(rt.body.slice(0, 90))}</div>` : c.reply_to ? '<div class="quote mut">↩ Mensaje borrado</div>' : ''}
           ${c.body ? `<p>${mentionify(c)}</p>` : ''}
           ${(c.links || []).filter(okUrl).map(u => `<a class="lk" href="${esc(u)}" target="_blank" rel="noopener">${/drive\.google|docs\.google/.test(u) ? '📁' : '🔗'} ${esc(u.replace(/^https?:\/\//, '').slice(0, 45))}</a>`).join('')}
-          </div></div>`).join('') || '<p class="mut">Aún no hay mensajes. ¡Escribe el primero!</p>'}</div>
+          <div class="reacts">${['👍', '✅', '👀'].map(em => { const rs = S.reacts.filter(r => r.comment_id === c.id && r.emoji === em), me = rs.some(r => r.user_id === S.me.id);
+            return `<button class="${me ? 'on' : ''} ${rs.length ? 'has' : ''}" title="${esc(rs.map(r => pname(r.user_id)).join(', '))}" onclick="react('${c.id}','${em}',${me})">${em}${rs.length ? ' ' + rs.length : ''}</button>`; }).join('')}</div>
+          </div></div>`; }).join('') || '<p class="mut">Aún no hay mensajes. ¡Escribe el primero!</p>'}</div>
+        <div id="typing" class="mut" style="font-size:12px;min-height:16px"></div>
         <div class="comp">
+          ${S.reply ? (rc => rc ? `<div class="quote" style="display:flex;gap:8px">↩ Respondiendo a <b>${esc(pname(rc.user_id))}</b>: <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(rc.body)}</span><button class="ico" onclick="S.reply=null;keep(renderModal)">✕</button></div>` : '')(S.comments.find(x => x.id === S.reply)) : ''}
           <div id="mbox"></div>
-          <textarea id="cbody" placeholder="Escribe un mensaje… Usa @ para mencionar a alguien. Los enlaces de Drive se adjuntan solos." oninput="mentionInput(this)"
+          <textarea id="cbody" placeholder="Escribe un mensaje… Usa @ para mencionar a alguien. Los enlaces de Drive se adjuntan solos." oninput="mentionInput(this);sendTyping()"
             onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();const f=$('#mbox button');f?f.onmousedown(event):sendComment()}"></textarea>
           <div class="r"><small class="mut">Enter para enviar · Shift+Enter nueva línea · @ para mencionar</small><button class="btn pri" onclick="sendComment()">Enviar</button></div>
         </div>
@@ -698,12 +870,22 @@ function membersHTML(){
 
 /* ============ ACCIONES ============ */
 function togglePanel(p){ S.panel = S.panel === p ? null : p; render(); }
-document.addEventListener('click', e => { if (S.panel && !e.target.closest('.np,.menu,.bell,header .ico,.search')) { S.panel = null; render(); } });
-async function goProject(id){ S.pid = id; S.tid = null; S.view = 'board'; setHash(); await loadProject(); render(); }
-async function openTask(id){ S.tid = id; S.modal = 'task'; S.comments = []; S.tact = []; S.subs = []; setHash(); renderModal(); await loadTask(); keep(renderModal); }
-async function clickNotif(id){
-  const n = S.notifs.find(x => x.id === id); S.panel = null;
-  if (!n.read) { n.read = true; q(sb.from('notifications').update({ read:true }).eq('id', id)); }
+document.addEventListener('click', e => {
+  let re = false;
+  if (S.panel && !e.target.closest('.np,.menu,.bell,header .ico,.search')) { S.panel = null; re = true; }
+  if (S.pop && !e.target.closest('.pop,.qa')) { S.pop = null; re = true; }
+  if (re) render();
+});
+async function goProject(id){ S.pid = id; S.tid = null; S.view = 'board'; S.sel.clear(); S.selMode = false; setHash(); await loadProject(); render(); }
+async function openTask(id){
+  if (S.tid !== id) S.reply = null;
+  S.tid = id; S.modal = 'task'; S.comments = []; S.tact = []; S.subs = []; S.reacts = []; setHash(); renderModal();
+  typingChannel(id); await loadTask(); keep(renderModal); render();
+}
+async function clickNotif(ids){
+  ids = ids.split(','); const n = S.notifs.find(x => x.id === ids[0]); S.panel = null;
+  const unread = S.notifs.filter(x => ids.includes(x.id) && !x.read);
+  if (unread.length) { unread.forEach(x => x.read = true); q(sb.from('notifications').update({ read:true }).in('id', unread.map(x => x.id))); }
   if (n.type === 'access_request') return openModal('members');
   if (n.project_id && n.project_id !== S.pid) await goProject(n.project_id); else render();
   if (n.task_id && S.tasks.some(t => t.id === n.task_id)) openTask(n.task_id);
@@ -748,19 +930,87 @@ async function renameBucket(id){
 async function delBucket(id){
   const b = S.buckets.find(x => x.id === id);
   if (!confirm(`¿Eliminar la columna «${b.name}»? Sus tareas NO se borran: pasan a «Sin columna».`)) return;
-  await q(sb.from('buckets').delete().eq('id', id));
+  // Se borra a los 5 s salvo que pulses Deshacer
+  S.hidden.add(id); render();
+  toastUndo(`Columna «${b.name}» eliminada`, () => { S.hidden.delete(id); render(); },
+            async () => { await q(sb.from('buckets').delete().eq('id', id)); S.hidden.delete(id); });
 }
 async function addTask(bid, el){
   const title = el.value.trim(); if (!title) return;
   el.value = '';
   await q(sb.from('tasks').insert({ project_id: S.pid, bucket_id: bid, title, position: -Date.now() })); // negativo = arriba del todo, como Planner
 }
-async function dropTask(e, bid){
+async function pasteTasks(e, bid){
+  const lines = e.clipboardData.getData('text').split(/\r?\n/).map(s => s.replace(/^\s*([-*•·]|\d+[.)])\s*/, '').trim()).filter(Boolean);
+  if (lines.length < 2) return;
+  e.preventDefault();
+  if (!confirm(`¿Crear ${lines.length} tareas?\n\n• ${lines.slice(0, 10).join('\n• ')}${lines.length > 10 ? '\n…' : ''}`)) return;
+  const base = -Date.now();
+  await q(sb.from('tasks').insert(lines.map((title, i) => ({ project_id: S.pid, bucket_id: bid, title: title.slice(0, 300), position: base + i }))));
+  toast(`✔ ${lines.length} tareas creadas`);
+}
+// Mover una tarea (con Deshacer)
+async function moveTask(t, bid, pos){
+  const old = { bucket_id: t.bucket_id, position: t.position };
+  if (old.bucket_id === bid && old.position === pos) return;
+  Object.assign(t, { bucket_id: bid, position: pos }); render();
+  await q(sb.from('tasks').update({ bucket_id: bid, position: pos }).eq('id', t.id));
+  if (old.bucket_id !== bid) toastUndo(`«${t.title}» movida a ${S.buckets.find(b => b.id === bid)?.name || 'otra columna'}`,
+    () => q(sb.from('tasks').update(old).eq('id', t.id)));
+}
+async function dropOnCol(e, bid){
   e.preventDefault(); e.currentTarget.classList.remove('over');
-  const t = S.tasks.find(x => x.id === e.dataTransfer.getData('text/plain'));
+  const d = e.dataTransfer.getData('text/plain');
+  if (d.startsWith('col:')) { // reordenar columnas: la arrastrada queda antes de esta
+    const id = d.slice(4), list = visibleBuckets(), i = list.findIndex(b => b.id === bid);
+    if (id === bid || i < 0) return;
+    const prev = list.filter(b => b.id !== id)[list.filter(b => b.id !== id).findIndex(b => b.id === bid) - 1];
+    const pos = prev ? (prev.position + list[i].position) / 2 : list[i].position - 1;
+    S.buckets.find(b => b.id === id).position = pos; S.buckets.sort((a, b) => a.position - b.position); render();
+    return q(sb.from('buckets').update({ position: pos }).eq('id', id));
+  }
+  const t = S.tasks.find(x => x.id === d);
   if (!t || t.bucket_id === bid) return;
-  t.bucket_id = bid; render();
-  await q(sb.from('tasks').update({ bucket_id: bid, position: Date.now() }).eq('id', t.id));
+  moveTask(t, bid, Date.now());
+}
+async function dropOnCard(e, targetId){
+  const d = e.dataTransfer.getData('text/plain'); if (d.startsWith('col:')) return;
+  e.preventDefault(); e.stopPropagation(); e.currentTarget.closest('.col')?.classList.remove('over');
+  const t = S.tasks.find(x => x.id === d), target = S.tasks.find(x => x.id === targetId);
+  if (!t || !target || t.id === target.id) return;
+  const list = colTasks(target.bucket_id).filter(x => x.id !== t.id), i = list.findIndex(x => x.id === targetId);
+  const pos = i > 0 ? (list[i - 1].position + target.position) / 2 : target.position - 1; // queda justo encima de la tarjeta destino
+  moveTask(t, target.bucket_id, pos);
+}
+function setPop(tid, kind){ S.pop = S.pop?.tid === tid && S.pop.kind === kind ? null : { tid, kind }; render(); }
+async function cyclePrio(tid){
+  const t = S.tasks.find(x => x.id === tid), ks = Object.keys(PRIO), nx = ks[(ks.indexOf(t.priority) + 1) % ks.length];
+  t.priority = nx; render(); await q(sb.from('tasks').update({ priority: nx }).eq('id', tid));
+}
+function toggleSel(id){ S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); render(); }
+async function bulk(kind, val){
+  const ids = [...S.sel]; if (!ids.length || val === '') return;
+  if (kind === 'patch') await q(sb.from('tasks').update(val).in('id', ids));
+  else if (kind === 'assign') await q(sb.from('task_assignees').upsert(ids.map(id => ({ task_id: id, user_id: val })), { ignoreDuplicates: true }));
+  else if (kind === 'delete') {
+    if (!confirm(`¿Eliminar ${ids.length} tareas?`)) return;
+    ids.forEach(id => S.hidden.add(id)); S.sel.clear(); render();
+    return toastUndo(`${ids.length} tareas eliminadas`, () => { ids.forEach(id => S.hidden.delete(id)); render(); },
+                     () => q(sb.from('tasks').delete().in('id', ids)));
+  }
+  toast(`✔ ${ids.length} tareas actualizadas`);
+}
+async function dupTask(){
+  const t = S.tasks.find(x => x.id === S.tid);
+  const [n] = await q(sb.from('tasks').insert({ project_id: t.project_id, bucket_id: t.bucket_id, title: t.title + ' (copia)', description: t.description,
+    drive_url: t.drive_url, priority: t.priority, due_date: t.due_date, labels: t.labels, position: t.position + 0.001 }).select());
+  if ((S.subs || []).length) await q(sb.from('subtasks').insert(S.subs.map(s => ({ task_id: n.id, title: s.title, position: s.position }))));
+  if (t.task_assignees.length) await q(sb.from('task_assignees').insert(t.task_assignees.map(a => ({ task_id: n.id, user_id: a.user_id }))));
+  toast('⧉ Tarea duplicada'); await loadProject(); openTask(n.id);
+}
+function copyLink(){
+  const u = taskLink(S.pid, S.tid);
+  navigator.clipboard?.writeText(u).then(() => toast('🔗 Enlace copiado: pégalo en WhatsApp o donde quieras'), () => prompt('Copia este enlace:', u));
 }
 async function quickDone(id){
   const t = S.tasks.find(x => x.id === id);
@@ -769,12 +1019,13 @@ async function quickDone(id){
 async function saveTask(patch){ await q(sb.from('tasks').update(patch).eq('id', S.tid)); }
 function saveDrive(v){ v = v.trim(); if (v && !okUrl(v)) return toast('El enlace debe empezar por https://', 'err'); saveTask({ drive_url: v || null }); }
 async function delTask(){
-  if (!confirm('¿Eliminar esta tarea con su chat y subtareas? No se puede deshacer.')) return;
-  const id = S.tid; closeModal(); await q(sb.from('tasks').delete().eq('id', id));
+  const id = S.tid, t = S.tasks.find(x => x.id === id);
+  closeModal(); S.hidden.add(id); render();
+  toastUndo(`Tarea «${t.title}» eliminada`, () => { S.hidden.delete(id); render(); }, () => q(sb.from('tasks').delete().eq('id', id)));
 }
-async function toggleAssignee(uid, on){
-  if (on) await q(sb.from('task_assignees').insert({ task_id: S.tid, user_id: uid }));
-  else await q(sb.from('task_assignees').delete().eq('task_id', S.tid).eq('user_id', uid));
+async function toggleAssignee(uid, on, tid = S.tid){
+  if (on) await q(sb.from('task_assignees').insert({ task_id: tid, user_id: uid }));
+  else await q(sb.from('task_assignees').delete().eq('task_id', tid).eq('user_id', uid));
 }
 async function addSub(el){
   const title = el.value.trim(); if (!title) return; el.value = '';
@@ -784,9 +1035,39 @@ async function sendComment(){
   const el = $('#cbody'), body = el.value.trim(); if (!body) return;
   const links = [...new Set(body.match(/https?:\/\/[^\s<>"']+/g) || [])];
   const mentions = members().filter(p => body.includes('@' + pname(p.id))).map(p => p.id);
+  const reply_to = S.reply; S.reply = null;
   el.value = ''; $('#mbox').innerHTML = '';
-  try { await q(sb.from('comments').insert({ task_id: S.tid, body, links, mentions })); } catch { el.value = body; }
+  try { await q(sb.from('comments').insert({ task_id: S.tid, body, links, mentions, reply_to })); } catch { el.value = body; S.reply = reply_to; }
 }
+function setReply(id){ S.reply = id; keep(renderModal); $('#cbody').focus(); }
+async function editComment(id){
+  const c = S.comments.find(x => x.id === id), v = prompt('Edita tu mensaje:', c.body);
+  if (v == null || !v.trim() || v.trim() === c.body) return;
+  const data = await q(sb.from('comments').update({ body: v.trim() }).eq('id', id).select());
+  if (!data.length) toast('Ya han pasado más de 5 minutos: no se puede editar', 'err');
+}
+async function react(cid, emoji, had){
+  if (had) await q(sb.from('comment_reactions').delete().match({ comment_id: cid, user_id: S.me.id, emoji }));
+  else await q(sb.from('comment_reactions').insert({ comment_id: cid, emoji }));
+}
+// "Fulano está escribiendo…": mensajes efímeros por Realtime, no se guardan en la base de datos
+let tch, typingAt = 0, typingTimers = {};
+function typingChannel(tid){
+  if (tch) { sb.removeChannel(tch); tch = null; }
+  if (!tid) return;
+  tch = sb.channel('typing:' + tid).on('broadcast', { event: 'typing' }, ({ payload }) => {
+    if (payload.id === S.me.id) return;
+    clearTimeout(typingTimers[payload.id]);
+    typingTimers[payload.id] = setTimeout(() => { delete typingTimers[payload.id]; showTyping(); }, 3500);
+    showTyping();
+  }).subscribe();
+}
+function showTyping(){
+  const el = $('#typing'); if (!el) return;
+  const ns = Object.keys(typingTimers).map(pname);
+  el.textContent = ns.length ? `✍️ ${ns.join(', ')} ${ns.length > 1 ? 'están' : 'está'} escribiendo…` : '';
+}
+function sendTyping(){ if (tch && Date.now() - typingAt > 2000) { typingAt = Date.now(); tch.send({ type: 'broadcast', event: 'typing', payload: { id: S.me.id } }); } }
 async function sendReady(){
   if (!confirm('¿Avisar al administrador de que has terminado tu parte de esta tarea?')) return;
   await q(sb.from('comments').insert({ task_id: S.tid, kind: 'ready', body: '✅ He terminado mi parte. Lista para revisar.' }));

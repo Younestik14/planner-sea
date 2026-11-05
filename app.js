@@ -129,7 +129,7 @@ function roleBadge(uid, pid){
 /* ============ marca, login y arranque ============ */
 const brandHTML = (big = false) => `<div class="brand"><span class="mark"><img src="logo.png" alt="" onerror="this.parentNode.classList.add('nologo');this.remove()"></span>
   ${big ? '' : `<div class="hide-m"><b>Planner SEA</b><small>${SCHOOL}</small></div>`}</div>`;
-function screen(html){ $('#app').innerHTML = `<div class="center"><div class="boxc">${brandHTML(true)}${html}</div></div>`; $('#modal').innerHTML = ''; icons(); }
+function screen(html){ $('#app').innerHTML = `<div class="center"><div class="boxc"><img class="logo-full" src="logo-full.png" alt="CIFP Politécnico de Cartagena" onerror="this.outerHTML=brandHTML(true)">${html}</div></div>`; $('#modal').innerHTML = ''; icons(); }
 function loginScreen(){
   screen(`<h1>Planner SEA</h1><p class="mut" style="margin:0">${SCHOOL}</p>
     <p class="mut small" style="margin-top:14px">Organización de los trabajos en grupo: tareas, plazos, diario del proyecto y chat.</p>
@@ -1280,7 +1280,7 @@ async function exportReport(){
   const tasks = [...S.tasks].sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999'));
   const done = S.tasks.filter(t => t.status === 'completada').length, totalMin = S.tlogs.reduce((a, l) => a + l.minutes, 0);
   const admins = [...S.profiles.filter(x => x.is_admin).map(x => x.id), ...adminsOf(p.id)].map(pname).map(esc).join(', ');
-  const logo = new URL('logo.png', location.href).href;
+  const logo = new URL('logo-full.png', location.href).href;
   w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe – ${esc(p.name)}</title><style>
     body{font:12px/1.45 Inter,system-ui,Segoe UI,Roboto,sans-serif;color:#111;margin:28px}h1{margin:0;font-size:22px}h2{font-size:14px;margin:22px 0 8px;border-bottom:2px solid ${esc(p.color)};padding-bottom:4px}
     table{width:100%;border-collapse:collapse}th,td{border:1px solid #d5d8de;padding:5px 7px;text-align:left;vertical-align:top}th{background:#f1f2f5}.m{color:#666}

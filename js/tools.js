@@ -189,24 +189,29 @@ async function saveMat(id, k, v, type){
 }
 async function delMat(id){ if (!confirm('¿Eliminar este artículo?')) return; S.materials = S.materials.filter(x => x.id !== id); render(); await q(sb.from('materials').delete().eq('id', id)); }
 
-/* ============ 14 · Mi semana ============ */
+/* ============ 14 · Calendario de clase (entregas de proyectos + exámenes, lo ve todo el mundo) ============ */
 function weekHTML(){
-  const mon = S.weekStart || (() => { const d = new Date(); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return isoOf(d); })();
-  const days = Array.from({ length: 7 }, (_, i) => addDays(mon, i)), td = today();
-  const open = S.mine.filter(t => !proj(t.project_id)?.is_template && !proj(t.project_id)?.archived);
-  const late = open.filter(t => t.status !== 'completada' && t.due_date && t.due_date < td);
-  const col = d => { const ts = open.filter(t => t.due_date === d), ms = S.meetings.filter(m => isoOf(new Date(m.meeting_at)) === d), ex = S.exams.filter(e => e.exam_date === d);
-    return `<div class="wday ${d === td ? 'today' : ''} ${d < td ? 'past' : ''}"><div class="wd-h"><b>${cap(new Date(d + 'T00:00').toLocaleDateString('es-ES', { weekday:'short' }))}</b><span>${new Date(d + 'T00:00').getDate()}</span></div>
-      ${ex.map(e => `<button class="wd-m wd-x" onclick="editExam('${e.id}')">${ic('graduation-cap', 'sm')} <b>Examen</b><br><small>${esc(e.title)}</small></button>`).join('')}
-      ${ms.map(m => `<button class="wd-m" onclick="goProject('${m.project_id}','diary')">${ic('calendar-clock', 'sm')} <b>${new Date(m.meeting_at).toLocaleTimeString('es-ES', { hour:'2-digit', minute:'2-digit' })}</b> Reunión<br><small>${esc(proj(m.project_id)?.name || '')}${m.place ? ' · ' + esc(m.place) : ''}</small></button>`).join('')}
-      ${ts.map(t => `<button class="wd-t ${t.status === 'completada' ? 'done' : ''}" style="--p:${PRIO[t.priority][1]}" onclick="jump('${t.project_id}','${t.id}')"><b>${esc(t.title)}</b><small>${esc(proj(t.project_id)?.name || '')}</small></button>`).join('')}
-      ${!ts.length && !ms.length && !ex.length ? '<div class="empty">—</div>' : ''}</div>`; };
-  const mv = n => `S.weekStart='${addDays(mon, n)}';render()`;
-  return `<div class="page" style="max-width:none"><div class="row" style="flex-wrap:wrap"><h1 class="grow">Mi semana</h1>
-      <button class="btn" onclick="${mv(-7)}" aria-label="Semana anterior">${ic('chevron-left')}</button><button class="btn" onclick="S.weekStart=null;render()">Esta semana</button><button class="btn" onclick="${mv(7)}" aria-label="Semana siguiente">${ic('chevron-right')}</button></div>
-    <p class="mut" style="margin-top:0">${fmtD(days[0])} – ${fmtD(days[6])} · tus tareas por fecha límite, los exámenes y las reuniones de todos los proyectos.</p>
-    ${late.length ? `<div class="banner bad" style="margin-bottom:12px;cursor:pointer" onclick="go('mine')">${ic('triangle-alert')} Tienes ${late.length} tarea${late.length > 1 ? 's' : ''} vencida${late.length > 1 ? 's' : ''}. Pulsa para verlas.</div>` : ''}
-    <div class="week">${days.map(col).join('')}</div></div>`;
+  const base = S.ccal || new Date(), y = base.getFullYear(), m = base.getMonth(), O = isOwner();
+  const first = new Date(y, m, 1), start = new Date(y, m, 1 - (first.getDay() + 6) % 7), td = today();
+  const ents = S.projects.filter(p => p.due_date && !p.is_template && !p.archived);
+  let cells = '';
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start); d.setDate(start.getDate() + i); const k = isoOf(d);
+    const ex = S.exams.filter(e => e.exam_date === k), en = ents.filter(p => p.due_date === k);
+    cells += `<div class="dc ${d.getMonth() !== m ? 'out' : ''} ${k === td ? 'today' : ''}" ${O ? `ondblclick="if(event.target===this){S.examDay='${k}';editExam()}"` : ''}><div class="dn">${d.getDate()}</div>
+      ${ex.map(examChip).join('')}
+      ${en.map(p => `<button class="ct ce" style="--p:${p.color || 'var(--acc)'}" title="Entrega: ${esc(p.name)}" onclick="goProject('${p.id}')">${ic('flag', 'sm')} ${esc(p.name)}</button>`).join('')}</div>`;
+  }
+  const mv = k => `S.ccal=new Date(${y},${m + k},1);render()`;
+  const next = [...S.exams.filter(e => e.exam_date >= td).map(e => ({ d: e.exam_date, t: 'Examen', n: e.title })), ...ents.filter(p => p.due_date >= td).map(p => ({ d: p.due_date, t: 'Entrega', n: p.name }))].sort((a, b) => a.d.localeCompare(b.d)).slice(0, 4);
+  return `<div class="page" style="max-width:none"><div class="row" style="flex-wrap:wrap;margin-bottom:6px"><h1 class="grow" style="margin:0">Calendario de clase</h1>
+      ${O ? `<button class="btn pri" onclick="S.examDay=null;editExam()">${ic('graduation-cap')} Añadir examen</button>` : ''}</div>
+    <p class="mut" style="margin-top:0">Exámenes ${ic('graduation-cap', 'sm')} y entregas de proyectos ${ic('flag', 'sm')} de toda la clase.${O ? ' Doble clic en un día para poner un examen ese día.' : ''}</p>
+    ${next.length ? `<div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:14px">${next.map(x => `<span class="chip" style="${x.t === 'Examen' ? 'color:var(--bad-t);background:var(--bad-bg)' : ''}"><b>${x.t}</b>&nbsp;${esc(x.n)} · ${fmtD(x.d)}${x.d === td ? ' (hoy)' : ''}</span>`).join('')}</div>` : ''}
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn" onclick="${mv(-1)}" aria-label="Mes anterior">${ic('chevron-left')}</button><button class="btn" onclick="S.ccal=null;render()">Hoy</button><button class="btn" onclick="${mv(1)}" aria-label="Mes siguiente">${ic('chevron-right')}</button>
+      <h3 style="margin:0 0 0 8px">${cap(first.toLocaleDateString('es-ES', { month:'long', year:'numeric' }))}</h3></div>
+    <div class="cal">${['lun','mar','mié','jue','vie','sáb','dom'].map(d => `<div class="dh">${d}</div>`).join('')}${cells}</div></div>`;
 }
 
 /* ============ 15 · Notas privadas en cada tarea ============ */
@@ -269,7 +274,7 @@ function auditHTML(){
 const FEATURES = { 'f:palette': 'Menú Ctrl+K', 'f:ctx': 'Clic derecho en tarjetas', 'f:nl': 'Tareas con texto natural', 'f:undo': 'Ctrl+Z', 'f:dragdate': 'Arrastrar fechas',
   'f:present': 'Pantalla de clase', 'f:report': 'Informe PDF', 'f:excel': 'Excel', 'f:quick': 'Respuestas rápidas', 'f:wikicomment': 'Comentarios en notas', 'f:meeting': 'Convocar reunión',
   'f:rsvp': 'Responder a reunión', 'f:agreements': 'Acuerdos → tareas', 'f:calc': 'Calculadoras', 'f:calcinsert': 'Insertar cálculo', 'f:material': 'Lista de material', 'f:wikitemplate': 'Plantillas de notas' };
-const VIEW_NAMES = { home: 'Inicio', mine: 'Mis tareas', week: 'Mi semana', person: 'Perfiles', compare: 'Comparar', audit: 'Registro', usage: 'Uso', ...Object.fromEntries(PVIEWS.map(v => [v[0], v[1]])) };
+const VIEW_NAMES = { home: 'Inicio', mine: 'Mis tareas', week: 'Calendario de clase', person: 'Perfiles', compare: 'Comparar', audit: 'Registro', usage: 'Uso', ...Object.fromEntries(PVIEWS.map(v => [v[0], v[1]])) };
 async function loadUsage(){ S.usage = isOwner() ? await q(sb.from('usage_events').select('user_id,kind,at').gte('at', addDays(today(), -30)).order('at').limit(20000)) : []; }
 function usageHTML(){
   const ev = S.usage || [], days = Array.from({ length: 30 }, (_, i) => addDays(today(), i - 29));
@@ -293,7 +298,7 @@ function usageHTML(){
 
 /* ============ Exámenes (calendario de la clase; solo los crea el propietario) ============ */
 const examChip = e => `<button class="ct cx" title="Examen: ${esc(e.title)}${e.notes ? ' · ' + esc(e.notes) : ''}" onclick="editExam('${e.id}')">${ic('graduation-cap', 'sm')} ${esc(e.title)}</button>`;
-function editExam(id){ S.examId = id || null; openModal('exam'); }
+function editExam(id){ S.examId = id || null; if (id) S.examDay = null; openModal('exam'); }
 function examFormHTML(){
   const e = S.exams.find(x => x.id === S.examId), O = isOwner();
   if (e && !O) return `<div class="mod sm"><div class="mh"><h3>Examen</h3><button class="ico" onclick="closeModal()">${ic('x')}</button></div><div class="mb">
@@ -301,7 +306,7 @@ function examFormHTML(){
     ${e.notes ? `<p>${linkify(e.notes)}</p>` : ''}<div class="row"><span class="grow"></span><button class="btn" onclick="closeModal()">Cerrar</button></div></div></div>`;
   if (!O) return '';
   return `<div class="mod sm"><div class="mh"><h3>${e ? 'Editar examen' : 'Nuevo examen'}</h3><button class="ico" onclick="closeModal()">${ic('x')}</button></div><div class="mb">
-    <p class="small mut">Lo verá toda la clase en el calendario de todos los proyectos y en «Mi semana».</p>
+    <p class="small mut">Lo verá toda la clase en el Calendario de clase y en el calendario de cada proyecto.</p>
     <label>Asignatura o examen</label><input id="ex-title" maxlength="120" value="${esc(e?.title || '')}" placeholder="Ej.: Automatismos – tema 4">
     <label>Fecha</label><input id="ex-date" type="date" value="${e?.exam_date || S.examDay || today()}">
     <label>Notas (opcional)</label><textarea id="ex-notes" rows="2" maxlength="500" placeholder="Temario, aula, material que hay que llevar…">${esc(e?.notes || '')}</textarea>

@@ -613,3 +613,4 @@ body.present .layout{min-height:100vh}
 /* exámenes */
 .cal .ct.cx{--p:var(--bad);background:var(--bad-bg);color:var(--bad-t);font-weight:600;display:flex;gap:4px;align-items:center}
 .wd-m.wd-x{border-left-color:var(--bad);background:var(--bad-bg)}
+.cal .ct.ce{font-weight:600;display:flex;gap:4px;align-items:center}

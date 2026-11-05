@@ -310,7 +310,7 @@ async function signImages(bucket, paths){
 
 // Tiempo real selectivo: cada cambio recarga solo la parte afectada (avisos, base, proyecto abierto o tarea abierta)
 const RT_SKIP = new Set(['activity', 'task_reads', 'usage_events', 'admin_log', 'email_sent', 'wiki_revisions', 'task_private_notes']);
-const RT_BASE = new Set(['projects', 'project_admins', 'app_settings', 'exams']);  // + reuniones (posts) para Mi semana
+const RT_BASE = new Set(['projects', 'project_admins', 'app_settings', 'exams']);
 let tmr, rtq = {};
 function relProject(t, r){
   if ('project_id' in r) return r.project_id === S.pid;

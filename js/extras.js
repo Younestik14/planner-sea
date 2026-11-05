@@ -31,7 +31,7 @@ function palItems(){
   const it = [], add = (icon, label, sub, run) => it.push({ icon, label, sub, run });
   add('house', 'Ir a Inicio', '', () => go('home'));
   add('list-todo', 'Ir a Mis tareas', '', () => go('mine'));
-  add('calendar-range', 'Mi semana', '', () => go('week'));
+  add('calendar-range', 'Calendario de clase', '', () => go('week'));
   add('calculator', 'Calculadoras eléctricas', 'Intensidad, potencia, caída de tensión, sección', () => openCalc());
   if (proj() && adminOf()) add('plus', 'Nueva tarea', proj().name, async () => { if (S.view !== 'board') await go('board'); $('.addt input')?.focus(); });
   if (canCreate()) add('folder-plus', 'Nuevo proyecto', '', () => openModal('project-new'));

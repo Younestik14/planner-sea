@@ -158,8 +158,7 @@ function materialHTML(){
   const O = isOwner(), rows = [...S.materials].sort((a, b) => a.position - b.position);
   const tot = rows.reduce((a, m) => a + (m.unit_price ?? 0) * m.qty, 0), by = k => rows.filter(m => m.status === k).reduce((a, m) => a + (m.unit_price ?? 0) * m.qty, 0);
   // los números van en texto con teclado decimal para aceptar la coma española (9,5)
-  // cada uno edita los artículos que añadió; el propietario, todos (lo impone también la base de datos)
-  const mine = m => O || m.created_by === S.me.id;
+  const mine = () => true; // todos los miembros editan y borran todo el material
   const cell = (m, k, type = 'text', w = '') => mine(m) ? `<input class="cellin" style="${w}" type="${type === 'url' ? 'url' : 'text'}" ${type === 'number' ? 'inputmode="decimal"' : ''} value="${esc(type === 'number' && m[k] != null ? String(m[k]).replace('.', ',') : m[k] ?? '')}" onclick="event.stopPropagation()" onchange="saveMat('${m.id}','${k}',this.value,'${type}')">` : esc(m[k] ?? '—');
   return `<div class="page" style="max-width:none">
     <div class="kpis" style="margin-top:0"><div class="card-box kpi"><b>${eur(tot)}</b><span>Total (sin IVA)</span></div>
@@ -167,8 +166,7 @@ function materialHTML(){
       <div class="card-box kpi"><b style="color:var(--acc2)">${eur(by('pedido'))}</b><span>Pedido</span></div>
       <div class="card-box kpi"><b style="color:var(--ok-t)">${eur(by('recibido'))}</b><span>Recibido</span></div></div>
     <div class="row" style="margin:16px 0 10px"><input id="mat-new" style="max-width:420px" placeholder="+ Añadir material (Enter)… Ej.: Cable RZ1-K 2,5 mm²" onkeydown="if(event.key==='Enter')addMat(this)">
-      ${O ? '' : '<span class="small mut">Puedes añadir artículos y cambiar o borrar los que hayas añadido tú.</span>'}
-      <span class="grow"></span><button class="btn" onclick="exportExcel()">${ic('file-spreadsheet')} Exportar a Excel</button></div>
+            <span class="grow"></span><button class="btn" onclick="exportExcel()">${ic('file-spreadsheet')} Exportar a Excel</button></div>
     <div class="card-box tablewrap"><table class="ltable mat"><thead><tr><th>Artículo</th><th>Cantidad</th><th>Ud.</th><th>Precio ud.</th><th>Total</th><th>Proveedor</th><th>Estado</th><th>Enlace</th><th></th></tr></thead>
     <tbody>${rows.map(m => `<tr style="cursor:default"><td>${cell(m, 'name', 'text', 'min-width:200px')}</td><td>${cell(m, 'qty', 'number', 'width:80px')}</td><td>${cell(m, 'unit', 'text', 'width:60px')}</td>
       <td>${mine(m) ? cell(m, 'unit_price', 'number', 'width:90px') : eur(m.unit_price)}</td><td><b>${m.unit_price != null ? eur(m.unit_price * m.qty) : '—'}</b></td><td>${cell(m, 'supplier', 'text', 'width:130px')}</td>

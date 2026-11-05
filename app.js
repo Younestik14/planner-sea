@@ -15,13 +15,15 @@ const PRIO = { urgente:['Urgente','#ef4444'], importante:['Importante','#f59e0b'
 const PRANK = { urgente:0, importante:1, media:2, baja:3 };
 const STATUS = { no_iniciada:'No iniciada', en_curso:'En curso', completada:'Completada' };
 const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899','#a855f7','#84cc16'];
-const PVIEWS = [['board','Tablero','square-kanban'],['gantt','Cronograma','gantt-chart'],['cal','Calendario','calendar-days'],['diary','Diario','megaphone'],
-                ['team','Equipo','users'],['files','Archivos','folder'],['hist','Historial','history'],['trash','Papelera','trash-2']];
+const PVIEWS = [['board','Tablero','square-kanban'],['list','Lista','list'],['gantt','Cronograma','gantt-chart'],['cal','Calendario','calendar-days'],['diary','Diario','megaphone'],
+                ['wiki','Notas','notebook-pen'],['team','Equipo','users'],['stats','Estadísticas','chart-line'],['files','Archivos','folder'],['hist','Historial','history'],['trash','Papelera','trash-2']];
+const QUICK = ['Lo reviso hoy 👀', 'Hecho ✅', 'Subido a Drive 📁', '¿Alguien puede revisarlo?', 'Necesito ayuda con esto 🙋', 'Voy con retraso, lo termino mañana'];
 const REACT_POST = ['👍','✅','👀','❤️','🎉'], REACT_MSG = ['👍','✅','👀'];
 
 const S = { user:null, me:null, profiles:[], projects:[], padmins:[], notifs:[], mine:[], reads:{}, recent:[], review:[], weekMin:0,
   pid:null, tid:null, view:'home', uid:null, person:null,
-  buckets:[], tasks:[], trash:[], activity:[], deps:[], tlogs:[], posts:[], preacts:[], votes:[], cdraft:[],
+  buckets:[], tasks:[], trash:[], activity:[], deps:[], tlogs:[], posts:[], preacts:[], votes:[], cdraft:[], tvotes:[], wiki:[], wid:null, wedit:null, revs:null, act84:[],
+  listSort:{ k:'due', d:1 }, listQ:'', qr:false,
   comments:[], tact:[], subs:[], reacts:[],
   onlyMine:false, label:'', cal:null, found:null, sel:new Set(), selMode:false, pop:null, reply:null, hidden:new Set(),
   sort: ls('sort') || 'manual', compact: !!ls('compact'), panel:null, modal:null, seen:null, urls:{},
@@ -218,20 +220,24 @@ async function loadBase(){
 async function loadProject(){
   if (!S.projects.some(p => p.id === S.pid)) S.pid = (S.projects.find(p => !p.archived && !p.is_template) || S.projects[0])?.id || null;
   if (!S.pid) { Object.assign(S, { buckets:[], tasks:[], activity:[], deps:[], tlogs:[], posts:[], preacts:[], votes:[] }); return; }
-  const [b, t, a, posts] = await Promise.all([
+  const [b, t, a, posts, wiki] = await Promise.all([
     q(sb.from('buckets').select('*').eq('project_id', S.pid).order('position')),
     q(sb.from('tasks').select('*, task_assignees(user_id), subtasks(id,done), comments(created_at,user_id)').eq('project_id', S.pid).order('position')),
     q(sb.from('activity').select('*').eq('project_id', S.pid).order('created_at', { ascending:false }).limit(300)),
     q(sb.from('posts').select('*').eq('project_id', S.pid).order('created_at', { ascending:false })),
+    q(sb.from('wiki_pages').select('*').eq('project_id', S.pid).order('position').order('created_at')),
   ]);
   const ids = t.map(x => x.id), pids = posts.map(x => x.id);
-  const [deps, tlogs, preacts, votes] = await Promise.all([
+  const [deps, tlogs, preacts, votes, tvotes, act84] = await Promise.all([
     ids.length ? q(sb.from('task_deps').select('*').in('task_id', ids)) : [],
     ids.length ? q(sb.from('time_logs').select('*').in('task_id', ids).order('logged_on', { ascending:false })) : [],
     pids.length ? q(sb.from('post_reactions').select('*').in('post_id', pids)) : [],
     pids.length ? q(sb.from('post_votes').select('*').in('post_id', pids)) : [],
+    ids.length ? q(sb.from('task_votes').select('*').in('task_id', ids)) : [],
+    S.view === 'stats' ? q(sb.from('activity').select('actor_id,created_at').eq('project_id', S.pid).gte('created_at', addDays(today(), -84)).limit(5000)) : S.act84,
   ]);
-  Object.assign(S, { buckets:b, tasks: t.filter(x => !x.deleted_at), trash: t.filter(x => x.deleted_at), activity:a, posts, deps, tlogs, preacts, votes });
+  Object.assign(S, { buckets:b, tasks: t.filter(x => !x.deleted_at), trash: t.filter(x => x.deleted_at), activity:a, posts, deps, tlogs, preacts, votes, tvotes, wiki, act84 });
+  if (!wiki.some(w => w.id === S.wid)) S.wid = wiki[0]?.id || null;
   await signImages('diario', posts.flatMap(p => p.images));
 }
 async function loadTask(){
@@ -251,12 +257,13 @@ async function loadTask(){
 }
 async function loadPerson(){
   if (!prof(S.uid)) { S.view = 'home'; return; }
-  const [tasks, logs, msgs] = await Promise.all([
+  const [tasks, logs, msgs, act] = await Promise.all([
     q(sb.from('tasks').select('id,title,status,priority,due_date,project_id,task_assignees!inner(user_id)').eq('task_assignees.user_id', S.uid).is('deleted_at', null)),
     q(sb.from('time_logs').select('minutes,logged_on,task_id').eq('user_id', S.uid)),
     sb.from('comments').select('id', { count:'exact', head:true }).eq('user_id', S.uid),
+    q(sb.from('activity').select('created_at').eq('actor_id', S.uid).gte('created_at', addDays(today(), -140)).limit(5000)),
   ]);
-  S.person = { tasks, minutes: logs.reduce((a, r) => a + r.minutes, 0), msgs: msgs.count || 0 };
+  S.person = { tasks, minutes: logs.reduce((a, r) => a + r.minutes, 0), msgs: msgs.count || 0, act };
 }
 // Fotos del diario y del chat: los buckets son privados, así que pedimos enlaces firmados (1 h) y los guardamos
 const imgUrl = (bucket, path) => S.urls[bucket + ':' + path]?.u;
@@ -394,7 +401,7 @@ function mainHTML(){
   if (S.view === 'person') return personHTML();
   const p = proj();
   if (!p) return emptyState('folder-kanban', 'No hay proyectos todavía', canCreate() ? 'Crea el primero con el botón + del menú.' : 'Cuando se cree uno, aparecerá aquí.');
-  const view = { board: boardHTML, gantt: ganttHTML, cal: calHTML, diary: diaryHTML, team: teamHTML, files: filesHTML, trash: trashHTML }[S.view];
+  const view = { board: boardHTML, list: listHTML, gantt: ganttHTML, cal: calHTML, diary: diaryHTML, wiki: wikiHTML, team: teamHTML, stats: statsHTML, files: filesHTML, trash: trashHTML }[S.view];
   return projectHeaderHTML(p) + (view ? view() : `<div class="hist">${histHTML(S.activity, true)}</div>`);
 }
 const emptyState = (icon, title, text = '') => `<div class="empty-state">${ic(icon)}<h3>${title}</h3><p>${text}</p></div>`;
@@ -418,6 +425,7 @@ function projectHeaderHTML(p){
       <span class="small mut"><b style="color:var(--txt)">${total ? Math.round(done / total * 100) : 0}%</b> · ${done}/${total} completadas</span>
       ${late ? `<span class="chip bad">${ic('triangle-alert', 'sm')} ${late} vencidas</span>` : ''}
       ${dueProjectChip(p)}
+      ${riskChip(p, S.tasks)}
     </div>
     ${p.description ? `<p class="desc">${linkify(p.description)}</p>` : ''}
     ${pin && S.view !== 'diary' ? `<div class="pinned" onclick="go('diary')">${ic('pin')}<div class="grow"><b>${esc(first(pin.user_id))}:</b> ${esc((pin.body || (pin.poll_options ? 'Encuesta' : 'Fotos')).slice(0, 160))}</div><span class="small mut">Ver diario →</span></div>` : ''}
@@ -434,7 +442,7 @@ function boardToolsHTML(){
     ${E ? `<button class="ico ${S.selMode ? 'on' : ''}" onclick="S.selMode=!S.selMode;S.sel.clear();render()" title="Seleccionar varias tareas">${ic('list-checks')}</button>` : ''}
     <button class="ico ${S.compact ? 'on' : ''}" onclick="S.compact=!S.compact;ls('compact',S.compact);render()" title="Vista compacta">${ic('rows-3')}</button>
     <select onchange="S.sort=this.value;ls('sort',S.sort);render()" title="Ordenar tarjetas">
-      ${[['manual','Orden manual'],['due','Por fecha'],['prio','Por prioridad'],['person','Por persona']].map(([k, n]) => `<option value="${k}" ${S.sort === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      ${[['manual','Orden manual'],['due','Por fecha'],['prio','Por prioridad'],['person','Por persona'],['votes','Por votos']].map(([k, n]) => `<option value="${k}" ${S.sort === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
     ${labelsOf().length ? `<select onchange="S.label=this.value;render()"><option value="">Todas las etiquetas</option>${labelsOf().map(l => `<option ${l === S.label ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>` : ''}
     <label class="tg"><input type="checkbox" ${S.onlyMine ? 'checked' : ''} onchange="S.onlyMine=this.checked;render()"> Solo mías</label></div>`;
 }
@@ -473,6 +481,7 @@ function homeHTML(){
       return `<div class="card-box pcard" style="--c:${esc(p.color)}" onclick="goProject('${p.id}')"><h4>${esc(p.name)}</h4>
         <div class="bar"><i style="width:${tot ? d / tot * 100 : 0}%"></i></div>
         <div class="row small mut" style="margin-top:8px"><span>${tot ? Math.round(d / tot * 100) : 0}% · ${d}/${tot}</span><span class="grow"></span>${dueProjectChip(p)}</div>
+        ${p.due_date && daysLeft(p.due_date) >= 0 ? `<div style="margin-top:8px">${riskChipLite(p)}</div>` : ''}
         <div class="avs" style="margin-top:10px;justify-content:flex-start;padding-left:6px">${adminsOf(p.id).map(id => av(id)).join('')}</div></div>`; }).join('') || `<div class="card-box">${emptyState('folder-kanban', 'No hay proyectos activos')}</div>`}</div>
   </div>`;
 }
@@ -514,6 +523,8 @@ function personHTML(){
       <div class="card-box kpi"><b>${P.msgs}</b><span>Mensajes en chats</span></div>
     </div>
     ${late ? `<div class="banner bad">${ic('triangle-alert')} Tiene ${late} tarea${late > 1 ? 's' : ''} vencida${late > 1 ? 's' : ''}.</div>` : ''}
+    <div class="sect">Actividad en las últimas 20 semanas</div>
+    <div class="card-box" style="padding:16px;overflow-x:auto">${heatGrid(P.act.map(a => a.created_at), 140)}</div>
     <div class="sect">Tareas pendientes (${open.length})</div>
     <div class="card-box" style="padding:6px">${open.sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999')).map(t => mineRow({ ...t, labels: [] })).join('') || emptyState('party-popper', 'Sin tareas pendientes')}</div>
   </div>`;
@@ -527,6 +538,7 @@ function colTasks(bid){
     due: (x, y) => (x.due_date || '9999').localeCompare(y.due_date || '9999'),
     prio: (x, y) => PRANK[x.priority] - PRANK[y.priority],
     person: (x, y) => (x.task_assignees[0] ? pname(x.task_assignees[0].user_id) : '~').localeCompare(y.task_assignees[0] ? pname(y.task_assignees[0].user_id) : '~'),
+    votes: (x, y) => votesOf(y.id).length - votesOf(x.id).length,
   }[S.sort] || ((x, y) => x.position - y.position);
   return S.tasks.filter(t => (t.bucket_id || null) === bid && !S.hidden.has(t.id)
       && (!S.onlyMine || t.task_assignees.some(a => a.user_id === S.me.id)) && (!S.label || (t.labels || []).includes(S.label)))
@@ -564,11 +576,11 @@ function cardHTML(t){
   const assigned = new Set(t.task_assignees.map(a => a.user_id));
   return `<article class="card ${done ? 'done' : ''} ${on ? 'selected' : ''}" style="--p:${p[1]}" draggable="${E && !sel}"
       ondragstart="event.dataTransfer.setData('text/plain','${t.id}')" ${E && S.sort === 'manual' ? `ondragover="event.preventDefault()" ondrop="dropOnCard(event,'${t.id}')"` : ''}
-      onclick="${sel ? `toggleSel('${t.id}')` : `openTask('${t.id}')`}">
+      onclick="${sel ? `toggleSel('${t.id}')` : E ? `cardClick('${t.id}')` : `openTask('${t.id}')`}">
     ${sel ? `<input type="checkbox" class="selbox" ${on ? 'checked' : ''} aria-label="Seleccionar">` : E ? `<button class="chk ${done ? 'on' : ''}" title="${done ? 'Reabrir' : 'Marcar como completada'}" onclick="event.stopPropagation();quickDone('${t.id}')">${done ? ic('check') : ''}</button>` : ''}
     <div class="tags"><span class="prio">${p[0]}</span>${t.status === 'en_curso' ? '<span class="st">En curso</span>' : ''}${bl ? `<span class="blk">${ic('lock', 'sm')} Bloqueada</span>` : ''}${t.review_requested && !done ? `<span class="rev">${ic('eye', 'sm')} Revisar</span>` : ''}${(t.labels || []).map(lblHTML).join('')}</div>
-    <div class="ttl">${esc(t.title)}</div>
-    <div class="meta">${dueChip(t)}${t.subtasks.length ? `<span>${ic('square-check', 'sm')} ${sd}/${t.subtasks.length}</span>` : ''}${nu ? `<span class="chip warn">${ic('message-square', 'sm')} ${nu} nuevo${nu > 1 ? 's' : ''}</span>` : cc ? `<span>${ic('message-square', 'sm')} ${cc}</span>` : ''}${mins ? `<span>${ic('clock', 'sm')} ${fmtMin(mins)}</span>` : ''}${okUrl(t.drive_url) ? `<span>${ic('folder', 'sm')}</span>` : ''}
+    <div class="ttl" ${E && !sel ? `ondblclick="event.stopPropagation();clearTimeout(window._ct);inlineRename(this,'${t.id}')" title="Doble clic para renombrar"` : ''}>${esc(t.title)}</div>
+    <div class="meta">${voteBtn(t)}${dueChip(t)}${t.subtasks.length ? `<span>${ic('square-check', 'sm')} ${sd}/${t.subtasks.length}</span>` : ''}${nu ? `<span class="chip warn">${ic('message-square', 'sm')} ${nu} nuevo${nu > 1 ? 's' : ''}</span>` : cc ? `<span>${ic('message-square', 'sm')} ${cc}</span>` : ''}${mins ? `<span>${ic('clock', 'sm')} ${fmtMin(mins)}</span>` : ''}${okUrl(t.drive_url) ? `<span>${ic('folder', 'sm')}</span>` : ''}
       <span class="avs">${t.task_assignees.map(a => av(a.user_id)).join('')}</span></div>
     ${E && !sel ? `<div class="qa" onclick="event.stopPropagation()">
       <button class="ico" title="Asignar" onclick="setPop('${t.id}','who')">${ic('user-plus', 'sm')}</button>
@@ -579,6 +591,28 @@ function cardHTML(t){
       : `<input type="date" value="${t.due_date || ''}" onchange="q(sb.from('tasks').update({due_date:this.value||null}).eq('id','${t.id}'));S.pop=null">`}</div>` : ''}
   </article>`;
 }
+const votesOf = tid => S.tvotes.filter(v => v.task_id === tid);
+function voteBtn(t){
+  const vs = votesOf(t.id), mine = vs.some(v => v.user_id === S.me.id);
+  return `<button class="vote ${mine ? 'on' : ''}" title="${vs.length ? esc(vs.map(v => pname(v.user_id)).join(', ')) : 'Votar como prioritaria'}" onclick="event.stopPropagation();voteTask('${t.id}',${mine})">${ic('chevron-up', 'sm')}${vs.length || ''}</button>`;
+}
+async function voteTask(tid, had){
+  if (had) S.tvotes = S.tvotes.filter(v => !(v.task_id === tid && v.user_id === S.me.id)); else S.tvotes.push({ task_id: tid, user_id: S.me.id });
+  render();
+  if (had) await q(sb.from('task_votes').delete().match({ task_id: tid, user_id: S.me.id })); else await q(sb.from('task_votes').insert({ task_id: tid }));
+}
+// Los admins pueden renombrar con doble clic: el clic simple espera un instante para no abrir la tarea antes
+function cardClick(id){ clearTimeout(window._ct); window._ct = setTimeout(() => openTask(id), 240); }
+function inlineRename(el, tid){
+  const t = S.tasks.find(x => x.id === tid), inp = document.createElement('input');
+  inp.value = t.title; inp.className = 'inline-edit'; el.replaceWith(inp); inp.focus(); inp.select();
+  let done = false;
+  const finish = async save => { if (done) return; done = true; const v = inp.value.trim();
+    if (save && v && v !== t.title) { t.title = v; render(); await q(sb.from('tasks').update({ title: v }).eq('id', tid)); } else render(); };
+  inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); };
+  inp.onblur = () => finish(true); inp.onclick = e => e.stopPropagation();
+}
+
 function bulkBarHTML(){
   return `<div class="bulk"><b>${S.sel.size} seleccionadas</b>
     <select onchange="bulk('assign',this.value)"><option value="">Asignar a…</option>${members().map(p => `<option value="${p.id}">${esc(pname(p.id))}</option>`).join('')}</select>
@@ -923,11 +957,14 @@ function taskHTML(){
       </div>
       <div>
         <b class="row">${ic('message-square')} Chat de la tarea</b>
+        ${S.comments.some(c => c.pinned) ? `<div class="pins">${S.comments.filter(c => c.pinned).map(c => `<div class="row" onclick="document.getElementById('m-${c.id}')?.scrollIntoView({behavior:'smooth',block:'center'})">${ic('pin', 'sm')}<b>${esc(first(c.user_id))}:</b><span class="grow">${esc((c.body || '📷 Foto').slice(0, 120))}</span></div>`).join('')}</div>` : ''}
         <div class="chat" id="chatlist" ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="event.preventDefault();this.classList.remove('drop');addChatImages(event.dataTransfer.files)">${S.comments.map(c => { const me = c.user_id === S.me.id, rt = S.comments.find(x => x.id === c.reply_to);
           const canEdit = me && c.kind !== 'ready' && c.body && Date.now() - new Date(c.created_at) < 300000;
-          return `<div class="msg ${me ? 'me' : ''} ${c.kind === 'ready' ? 'ready' : ''}">${av(c.user_id)}
+          return `<div class="msg ${me ? 'me' : ''} ${c.kind === 'ready' ? 'ready' : ''} ${c.pinned ? 'pinned-msg' : ''}" id="m-${c.id}">${av(c.user_id)}
           <div class="bd"><b>${esc(pname(c.user_id))}</b> ${roleBadge(c.user_id, t.project_id)} <small class="mut">${ago(c.created_at)}${c.edited_at ? ' · editado' : ''}</small>
+          ${c.pinned ? `<span class="chip warn" style="padding:0 6px">${ic('pin', 'sm')} Fijado</span>` : ''}
           <span class="mact"><button class="ico" title="Responder" onclick="setReply('${c.id}')">${ic('reply', 'sm')}</button>
+            ${me || E ? `<button class="ico" title="${c.pinned ? 'Desfijar' : 'Fijar arriba'}" onclick="pinComment('${c.id}')">${ic(c.pinned ? 'pin-off' : 'pin', 'sm')}</button>` : ''}
             ${canEdit ? `<button class="ico" title="Editar (5 min)" onclick="editComment('${c.id}')">${ic('pencil', 'sm')}</button>` : ''}
             ${E ? `<button class="ico" title="Borrar mensaje" onclick="delComment('${c.id}')">${ic('trash-2', 'sm')}</button>` : ''}</span>
           ${rt ? `<div class="quote">↩ <b>${esc(pname(rt.user_id))}</b>: ${esc(rt.body.slice(0, 90) || '📷 Foto')}</div>` : c.reply_to ? '<div class="quote">↩ Mensaje borrado</div>' : ''}
@@ -944,7 +981,8 @@ function taskHTML(){
           <div id="mbox"></div>
           <textarea id="cbody" placeholder="Escribe un mensaje… Usa @ para mencionar. Los enlaces de Drive se adjuntan solos." oninput="mentionInput(this);sendTyping()" onpaste="pasteChatImages(event)"
             onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();const f=$('#mbox button');f?f.onmousedown(event):sendComment()}"></textarea>
-          <div class="r"><label class="ico" style="margin:0" title="Adjuntar fotos (también puedes arrastrarlas o pegarlas)">${ic('image')}<input type="file" accept="image/*" multiple hidden onchange="addChatImages(this.files)"></label>
+          ${S.qr ? quickRepliesHTML() : ''}
+          <div class="r"><button class="ico ${S.qr ? 'on' : ''}" title="Respuestas rápidas" onclick="S.qr=!S.qr;keep(renderModal)">${ic('zap')}</button><label class="ico" style="margin:0" title="Adjuntar fotos (también puedes arrastrarlas o pegarlas)">${ic('image')}<input type="file" accept="image/*" multiple hidden onchange="addChatImages(this.files)"></label>
             <small class="mut hide-m">Enter enviar · Shift+Enter nueva línea · @ mencionar · arrastra o pega fotos</small><span class="grow"></span><button class="btn pri" ${S.busy ? 'disabled' : ''} onclick="sendComment()">${ic('send', 'sm')} ${S.busy ? 'Enviando…' : 'Enviar'}</button></div>
         </div>
       </div>
@@ -1071,7 +1109,7 @@ async function removeAvatar(){
 }
 
 function keysHTML(){
-  const k = [['/', 'Buscar'], ['H', 'Inicio'], ['M', 'Mis tareas'], ['1 … 7', 'Pestañas del proyecto (Tablero, Cronograma, Calendario, Diario, Equipo, Archivos, Historial)'],
+  const k = [['/', 'Buscar'], ['H', 'Inicio'], ['M', 'Mis tareas'], ['1 … 9', 'Pestañas del proyecto (Tablero, Lista, Cronograma, Calendario, Diario, Notas, Equipo, Estadísticas, Archivos)'],
              ['N', 'Nueva tarea en la primera columna (admins)'], ['← →', 'Tarea anterior / siguiente (con una tarea abierta)'], ['Esc', 'Cerrar']];
   return `<div class="mod sm"><div class="mh"><h3>Atajos de teclado</h3><button class="ico" onclick="closeModal()">${ic('x')}</button></div><div class="mb">
     ${k.map(([a, b]) => `<div class="mem"><kbd>${a}</kbd><div>${b}</div></div>`).join('')}</div></div>`;
@@ -1088,7 +1126,7 @@ document.addEventListener('keydown', e => {
   else if (e.key.toLowerCase() === 'n' && adminOf() && proj()) { e.preventDefault(); (S.view === 'board' ? Promise.resolve() : go('board')).then(() => $('.addt input')?.focus()); }
   else if (e.key.toLowerCase() === 'm') go('mine');
   else if (e.key.toLowerCase() === 'h') go('home');
-  else if ('1234567'.includes(e.key) && proj()) go(PVIEWS[+e.key - 1][0]);
+  else if ('123456789'.includes(e.key) && proj()) go(PVIEWS[+e.key - 1][0]);
 });
 document.addEventListener('click', e => {
   let re = false;
@@ -1497,4 +1535,218 @@ async function exportExcel(){
   add(tareas, 'Tareas'); add(equipo, 'Equipo'); add(horas, 'Horas'); add(hist, 'Historial');
   XLSX.writeFile(wb, `${p.name.replace(/[\\/:*?"<>|]/g, '')} - Planner SEA.xlsx`);
   toast('Excel descargado');
+}
+
+
+/* ============ Respuestas rápidas y mensajes fijados ============ */
+function quickRepliesHTML(){
+  const mine = S.me.quick_replies || [];
+  return `<div class="qr">${[...QUICK, ...mine].map((t, i) => `<span class="qrb"><button onclick="useQuick(${i})">${esc(t)}</button>${i >= QUICK.length ? `<button class="x" title="Quitar" onclick="delQuick(${i - QUICK.length})">${ic('x', 'sm')}</button>` : ''}</span>`).join('')}
+    <span class="qrb"><input id="qr-new" placeholder="+ Añadir la tuya (Enter)" onkeydown="if(event.key==='Enter')addQuick(this.value)"></span></div>`;
+}
+function useQuick(i){
+  const t = [...QUICK, ...(S.me.quick_replies || [])][i], el = $('#cbody');
+  el.value = (el.value.trim() ? el.value.trimEnd() + ' ' : '') + t; S.qr = false; keep(renderModal); $('#cbody').focus();
+}
+async function addQuick(v){
+  v = v.trim(); if (!v) return;
+  const list = [...(S.me.quick_replies || []), v].slice(-15);
+  S.me.quick_replies = list; keep(renderModal); if ($('#qr-new')) $('#qr-new').value = '';
+  await q(sb.from('profiles').update({ quick_replies: list }).eq('id', S.me.id));
+}
+async function delQuick(i){
+  const list = (S.me.quick_replies || []).filter((_, k) => k !== i);
+  S.me.quick_replies = list; keep(renderModal); await q(sb.from('profiles').update({ quick_replies: list }).eq('id', S.me.id));
+}
+async function pinComment(id){ const on = await q(sb.rpc('toggle_pin_comment', { p_id: id })); toast(on ? 'Mensaje fijado arriba del chat' : 'Mensaje desfijado'); }
+
+/* ============ Vista Lista ============ */
+const LIST_COLS = [
+  ['title', 'Tarea', t => t.title.toLowerCase()], ['bucket', 'Columna', t => S.buckets.find(b => b.id === t.bucket_id)?.position ?? 1e15],
+  ['status', 'Estado', t => ['no_iniciada', 'en_curso', 'completada'].indexOf(t.status)], ['prio', 'Prioridad', t => PRANK[t.priority]],
+  ['who', 'Responsables', t => t.task_assignees[0] ? pname(t.task_assignees[0].user_id) : '~'], ['start', 'Inicio', t => t.start_date || '9999'],
+  ['due', 'Fecha límite', t => t.due_date || '9999'], ['hours', 'Horas', t => minutesOf(t.id)], ['subs', 'Subtareas', t => t.subtasks.length ? t.subtasks.filter(s => s.done).length / t.subtasks.length : -1],
+  ['votes', 'Votos', t => votesOf(t.id).length],
+];
+function listHTML(){
+  const E = adminOf(), { k, d } = S.listSort, col = LIST_COLS.find(c => c[0] === k), qq = norm(S.listQ);
+  const rows = S.tasks.filter(t => !S.hidden.has(t.id) && (!qq || norm(t.title + ' ' + (t.labels || []).join(' ')).includes(qq)))
+    .sort((a, b) => { const x = col[2](a), y = col[2](b); return (x < y ? -1 : x > y ? 1 : 0) * d || a.position - b.position; });
+  const sel = (t, field, obj) => E ? `<select class="cellsel" onclick="event.stopPropagation()" onchange="q(sb.from('tasks').update({${field}:this.value}).eq('id','${t.id}'))">${Object.entries(obj).map(([v, n]) => `<option value="${v}" ${t[field] === v ? 'selected' : ''}>${Array.isArray(n) ? n[0] : n}</option>`).join('')}</select>` : null;
+  return `<div class="page" style="max-width:none">
+    <div class="row" style="margin-bottom:10px"><div class="search" style="flex:0 1 320px">${ic('search')}<input id="lq" placeholder="Filtrar por nombre o etiqueta…" value="${esc(S.listQ)}" oninput="S.listQ=this.value;keep(render)"></div>
+      <span class="mut small">${rows.length} de ${S.tasks.length} tareas · pulsa una cabecera para ordenar</span></div>
+    <div class="card-box tablewrap"><table class="ltable"><thead><tr>${LIST_COLS.map(([key, name]) => `<th onclick="S.listSort={k:'${key}',d:${k === key ? -d : 1}};render()" class="${k === key ? 'on' : ''}">${name}${k === key ? (d > 0 ? ' ↑' : ' ↓') : ''}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(t => { const p = PRIO[t.priority], m = minutesOf(t.id), bl = blockers(t).length;
+      return `<tr class="${t.status === 'completada' ? 'done' : ''}" onclick="openTask('${t.id}')">
+        <td style="--p:${p[1]}"><div class="row" style="gap:6px"><span class="prio"></span><b>${esc(t.title)}</b>${bl ? ic('lock', 'sm') : ''}${t.review_requested ? ic('eye', 'sm') : ''}</div>${(t.labels || []).length ? `<div class="tags" style="margin-top:4px">${t.labels.map(lblHTML).join('')}</div>` : ''}</td>
+        <td>${esc(S.buckets.find(b => b.id === t.bucket_id)?.name || '—')}</td>
+        <td>${sel(t, 'status', STATUS) || STATUS[t.status]}</td><td>${sel(t, 'priority', PRIO) || p[0]}</td>
+        <td><div class="avs" style="margin:0;justify-content:flex-start">${t.task_assignees.map(a => av(a.user_id)).join('') || '<span class="mut">—</span>'}</div></td>
+        <td>${t.start_date ? fmtD(t.start_date) : '—'}</td><td>${dueChip(t) || '—'}</td><td>${m ? fmtMin(m) : '—'}</td>
+        <td>${t.subtasks.length ? `${t.subtasks.filter(s => s.done).length}/${t.subtasks.length}` : '—'}</td><td>${voteBtn(t)}</td></tr>`; }).join('') || `<tr><td colspan="10">${emptyState('list', 'Sin tareas')}</td></tr>`}</tbody></table></div></div>`;
+}
+
+/* ============ Notas (wiki) ============ */
+// Markdown sencillo: # títulos, **negrita**, *cursiva*, `código`, listas, [ ] casillas, > citas, --- y enlaces
+function md(src){
+  const inline = t => t.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*(?!\s)(.+?)\*/g, '$1<i>$2</i>').replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+  let html = '', list = null, para = [];
+  const flush = () => { if (para.length) { html += `<p>${para.map(inline).join('<br>')}</p>`; para = []; } if (list) { html += `</${list}>`; list = null; } };
+  for (const raw of esc(src).split('\n')) {
+    const l = raw.trimEnd(); let m;
+    if (!l.trim()) { flush(); continue; }
+    if ((m = l.match(/^(#{1,3})\s+(.*)$/))) { flush(); const h = m[1].length + 1; html += `<h${h}>${inline(m[2])}</h${h}>`; continue; }
+    if (/^-{3,}$/.test(l.trim())) { flush(); html += '<hr>'; continue; }
+    if ((m = l.match(/^&gt;\s?(.*)$/))) { flush(); html += `<blockquote>${inline(m[1])}</blockquote>`; continue; }
+    if ((m = l.match(/^\s*[-*]\s+\[( |x|X)\]\s+(.*)$/))) { if (para.length) { const l2 = list; list = null; flush(); list = l2; } if (list !== 'ul') { if (list) html += `</${list}>`; html += '<ul class="checks">'; list = 'ul'; }
+      html += `<li><input type="checkbox" disabled ${m[1] !== ' ' ? 'checked' : ''}> ${inline(m[2])}</li>`; continue; }
+    if ((m = l.match(/^\s*[-*]\s+(.*)$/)) || (m = l.match(/^\s*\d+[.)]\s+(.*)$/))) {
+      const kind = /^\s*\d/.test(l) ? 'ol' : 'ul';
+      if (para.length) { html += `<p>${para.map(inline).join('<br>')}</p>`; para = []; }
+      if (list !== kind) { if (list) html += `</${list}>`; html += `<${kind}>`; list = kind; }
+      html += `<li>${inline(m[1])}</li>`; continue;
+    }
+    if (list) { html += `</${list}>`; list = null; }
+    para.push(l);
+  }
+  flush();
+  return html;
+}
+function wikiHTML(){
+  const E = adminOf(), page = S.wiki.find(w => w.id === S.wid), ed = S.wedit;
+  const side = `<div class="wside card-box">
+    ${S.wiki.map(w => `<button class="nav ${w.id === S.wid ? 'on' : ''}" onclick="S.wid='${w.id}';S.wedit=null;S.revs=null;render()">${ic('file-text', 'sm')}<span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(w.title)}</span></button>`).join('') || '<p class="mut small" style="padding:8px">Aún no hay páginas.</p>'}
+    ${E ? `<button class="btn ghost" style="width:100%;justify-content:center;margin-top:6px" onclick="newWikiPage()">${ic('plus', 'sm')} Nueva página</button>` : ''}</div>`;
+  let main;
+  if (ed) main = `<div class="card-box wmain">
+      <input id="w-title" class="ttitle" value="${esc(ed.title)}" placeholder="Título de la página" oninput="S.wedit.title=this.value">
+      <div class="row" style="margin:10px 0 6px"><button class="btn sm ${ed.preview ? '' : 'pri'}" onclick="S.wedit.preview=false;render()">Escribir</button><button class="btn sm ${ed.preview ? 'pri' : ''}" onclick="S.wedit.preview=true;render()">Vista previa</button>
+        <span class="small mut grow" style="text-align:right"># Título · **negrita** · *cursiva* · - lista · - [ ] casilla · [texto](enlace) · &gt; cita · ---</span></div>
+      ${ed.preview ? `<div class="mdv">${md(ed.body) || '<p class="mut">Nada que mostrar todavía.</p>'}</div>` : `<textarea id="w-body" class="wtext" oninput="S.wedit.body=this.value" placeholder="Escribe aquí: normativa, cálculos, decisiones, enlaces útiles…">${esc(ed.body)}</textarea>`}
+      <div class="row" style="margin-top:12px"><span class="grow"></span><button class="btn" onclick="S.wedit=null;render()">Cancelar</button><button class="btn pri" onclick="saveWiki()">${ic('check', 'sm')} Guardar</button></div></div>`;
+  else if (!page) main = `<div class="card-box wmain">${emptyState('notebook-pen', 'Notas del proyecto', E ? 'Crea páginas con la normativa, cálculos, decisiones o enlaces útiles. Las leerá todo el equipo.' : 'Los admins del proyecto escribirán aquí la información útil.')}</div>`;
+  else main = `<div class="card-box wmain">
+      <div class="row" style="flex-wrap:wrap"><h2 class="grow" style="margin:0">${esc(page.title)}</h2>
+        <button class="btn sm ghost" onclick="loadRevs()">${ic('history', 'sm')} Historial</button>
+        ${E ? `<button class="btn sm" onclick="S.wedit={id:'${page.id}',title:S.wiki.find(w=>w.id==='${page.id}').title,body:S.wiki.find(w=>w.id==='${page.id}').body};render()">${ic('pencil', 'sm')} Editar</button><button class="btn sm bad" onclick="delWiki('${page.id}')">${ic('trash-2', 'sm')}</button>` : ''}</div>
+      <p class="small mut" style="margin:4px 0 14px">Última edición: ${esc(pname(page.updated_by))} · ${ago(page.updated_at)}</p>
+      ${S.revs?.page === page.id ? `<div class="revs"><b class="small">Versiones anteriores</b>${S.revs.list.map((r, i) => `<div class="row small"><span class="grow">${fmtT(r.created_at)} · ${esc(pname(r.edited_by))}${i === 0 ? ' <span class="chip">actual</span>' : ''}</span>
+        <button class="btn sm ghost" onclick="S.revs.view=${i};render()">Ver</button>${E && i > 0 ? `<button class="btn sm" onclick="restoreRev(${i})">Restaurar</button>` : ''}</div>`).join('')}
+        <button class="btn sm ghost" onclick="S.revs=null;render()">Cerrar historial</button></div>` : ''}
+      ${S.revs?.page === page.id && S.revs.view > 0 ? `<div class="banner warn">${ic('history')} Viendo la versión del ${fmtT(S.revs.list[S.revs.view].created_at)}. <a href="#" onclick="event.preventDefault();S.revs.view=0;render()">Volver a la actual</a></div>
+        <div class="mdv">${md(S.revs.list[S.revs.view].body)}</div>` : `<div class="mdv">${md(page.body) || '<p class="mut">Página vacía.</p>'}</div>`}</div>`;
+  return `<div class="page wiki" style="max-width:none">${side}${main}</div>`;
+}
+async function newWikiPage(){
+  const t = prompt('Título de la nueva página (ej.: "Normativa", "Cálculos", "Decisiones"):'); if (!t?.trim()) return;
+  const [w] = await q(sb.from('wiki_pages').insert({ project_id: S.pid, title: t.trim(), body: '', position: Date.now() }).select());
+  S.wiki.push(w); S.wid = w.id; S.wedit = { id: w.id, title: w.title, body: '' }; render();
+}
+async function saveWiki(){
+  const ed = S.wedit; if (!ed.title.trim()) return toast('La página necesita un título', 'err');
+  await q(sb.from('wiki_pages').update({ title: ed.title.trim(), body: ed.body }).eq('id', ed.id));
+  Object.assign(S.wiki.find(w => w.id === ed.id) || {}, { title: ed.title.trim(), body: ed.body, updated_at: new Date().toISOString(), updated_by: S.me.id });
+  S.wedit = null; S.revs = null; toast('Página guardada'); render();
+}
+async function delWiki(id){
+  if (!confirm('¿Eliminar esta página de notas y su historial?')) return;
+  await q(sb.from('wiki_pages').delete().eq('id', id)); S.wiki = S.wiki.filter(w => w.id !== id); S.wid = S.wiki[0]?.id || null; render();
+}
+async function loadRevs(){
+  if (S.revs?.page === S.wid) { S.revs = null; return render(); }
+  S.revs = { page: S.wid, list: await q(sb.from('wiki_revisions').select('*').eq('page_id', S.wid).order('created_at', { ascending:false }).limit(50)), view: 0 };
+  render();
+}
+async function restoreRev(i){
+  const r = S.revs.list[i];
+  if (!confirm(`¿Restaurar la versión del ${fmtT(r.created_at)}? La actual seguirá en el historial.`)) return;
+  await q(sb.from('wiki_pages').update({ title: r.title, body: r.body }).eq('id', S.wid));
+  Object.assign(S.wiki.find(w => w.id === S.wid), { title: r.title, body: r.body }); S.revs = null; toast('Versión restaurada'); render();
+}
+
+/* ============ Riesgo, progreso y actividad ============ */
+function computeRisk(p, tasks){
+  const open = tasks.filter(t => t.status !== 'completada'), td = today();
+  const overdue = open.filter(t => t.due_date && t.due_date < td), blocked = open.filter(t => blockers(t).length);
+  const unassigned = open.filter(t => !(t.task_assignees || []).length);
+  const doneRecent = tasks.filter(t => t.completed_at && dayDiff(t.completed_at.slice(0, 10), td) <= 14).length;
+  const pace = doneRecent / 14, left = p.due_date ? daysLeft(p.due_date) : null;
+  const need = open.length ? (pace > 0 ? Math.ceil(open.length / pace) : Infinity) : 0;
+  const bad = [], warn = [];
+  if (left !== null && left < 0 && open.length) bad.push(`La fecha de entrega ya pasó y quedan ${open.length} tareas`);
+  if (overdue.length >= 3) bad.push(`${overdue.length} tareas vencidas`); else if (overdue.length) warn.push(`${overdue.length} tarea${overdue.length > 1 ? 's' : ''} vencida${overdue.length > 1 ? 's' : ''}`);
+  if (left !== null && left >= 0 && open.length) {
+    if (need > left * 1.5 && open.length > 2) bad.push(`Al ritmo actual (${doneRecent} completadas en 14 días) harían falta ${need === Infinity ? 'muchos' : need} días y quedan ${left}`);
+    else if (need > left) warn.push(`Ritmo justo: harían falta ~${need} días y quedan ${left}`);
+  }
+  if (blocked.length) warn.push(`${blocked.length} tarea${blocked.length > 1 ? 's' : ''} bloqueada${blocked.length > 1 ? 's' : ''} por otras`);
+  if (unassigned.length) warn.push(`${unassigned.length} tarea${unassigned.length > 1 ? 's' : ''} pendiente${unassigned.length > 1 ? 's' : ''} sin asignar`);
+  const level = bad.length ? 'bad' : warn.length ? 'warn' : 'ok';
+  return { level, reasons: [...bad, ...warn], open: open.length, pace: doneRecent, left };
+}
+const RISK_TXT = { ok: 'En buen camino', warn: 'Atención', bad: 'En riesgo' };
+function riskChip(p, tasks){
+  if (p.is_template || p.archived || !tasks.length) return '';
+  const r = computeRisk(p, tasks);
+  return `<span class="chip ${r.level === 'ok' ? 'ok' : r.level}" style="cursor:pointer" title="${esc(r.reasons.join(' · ') || 'Sin problemas detectados')}" onclick="go('stats')"><span class="light ${r.level}"></span>${RISK_TXT[r.level]}</span>`;
+}
+// En Inicio solo tenemos el estado de las tareas de cada proyecto: semáforo aproximado por ritmo necesario
+function riskChipLite(p){
+  const open = p.tasks.filter(t => t.status !== 'completada').length, left = daysLeft(p.due_date);
+  if (!p.tasks.length) return '';
+  const level = open === 0 ? 'ok' : left <= 2 && open > 2 ? 'bad' : open / Math.max(left, 1) > 1 ? 'warn' : 'ok';
+  return `<span class="chip ${level === 'ok' ? 'ok' : level}"><span class="light ${level}"></span>${RISK_TXT[level]}</span>`;
+}
+function burndownSVG(p, tasks){
+  if (!tasks.length) return emptyState('chart-line', 'Sin tareas todavía');
+  const td = today(), d0 = [p.created_at, ...tasks.map(t => t.created_at)].map(x => x.slice(0, 10)).sort()[0];
+  const end = [td, p.due_date].filter(Boolean).sort().pop(), n = Math.min(dayDiff(d0, end), 150) + 1, start = addDays(end, -(n - 1));
+  const days = Array.from({ length: n }, (_, i) => addDays(start, i));
+  const rem = d => tasks.filter(t => t.created_at.slice(0, 10) <= d && !(t.completed_at && t.completed_at.slice(0, 10) <= d)).length;
+  const real = days.filter(d => d <= td).map(rem), max = Math.max(1, ...real, tasks.length);
+  const W = 800, H = 260, L = 40, B = 30, T = 14, R = 14, x = i => L + (W - L - R) * (n > 1 ? i / (n - 1) : 0), y = v => T + (H - T - B) * (1 - v / max);
+  const pts = real.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const iTd = days.indexOf(td), iDue = p.due_date ? days.indexOf(p.due_date) : -1;
+  const ideal = iDue > 0 ? `<line x1="${x(0)}" y1="${y(real[0] ?? 0)}" x2="${x(iDue)}" y2="${y(0)}" class="b-ideal"/>` : '';
+  const ticks = [0, Math.round(max / 2), max].map(v => `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${v}</text><line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="b-grid"/>`).join('');
+  const lab = [0, Math.floor((n - 1) / 2), n - 1].map(i => `<text x="${x(i)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}">${fmtD(days[i])}</text>`).join('');
+  return `<svg class="burn" viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfica de tareas pendientes por día">${ticks}${lab}${ideal}
+    ${iTd >= 0 ? `<line x1="${x(iTd)}" x2="${x(iTd)}" y1="${T}" y2="${H - B}" class="b-today"/>` : ''}
+    ${iDue >= 0 ? `<line x1="${x(iDue)}" x2="${x(iDue)}" y1="${T}" y2="${H - B}" class="b-due"/>` : ''}
+    <polyline points="${pts}" class="b-real"/>${real.length ? `<circle cx="${x(real.length - 1)}" cy="${y(real[real.length - 1])}" r="4" class="b-dot"/>` : ''}</svg>
+    <div class="row small mut" style="flex-wrap:wrap;gap:14px;margin-top:6px"><span><i class="lg real"></i> Pendientes reales</span>${ideal ? '<span><i class="lg ideal"></i> Ritmo ideal hasta la entrega</span>' : '<span>Pon fecha de entrega al proyecto para ver el ritmo ideal</span>'}<span><i class="lg today"></i> Hoy</span>${iDue >= 0 ? '<span><i class="lg due"></i> Entrega</span>' : ''}</div>`;
+}
+// Mapa de actividad: cuadrícula por semanas (columnas) y días (filas), como el de GitHub
+function heatGrid(dates, nDays){
+  const counts = {}; dates.forEach(d => { const k = isoOf(new Date(d)); counts[k] = (counts[k] || 0) + 1; });
+  const end = new Date(), first = new Date(); first.setDate(end.getDate() - nDays + 1); first.setDate(first.getDate() - (first.getDay() + 6) % 7);
+  const max = Math.max(1, ...Object.values(counts)), lv = c => c ? Math.min(4, Math.ceil(c / max * 4)) : 0;
+  let cols = '', d = new Date(first), total = 0;
+  while (d <= end) {
+    let cells = '';
+    for (let i = 0; i < 7; i++) { const k = isoOf(d), c = counts[k] || 0; if (d <= end) { total += c; cells += `<i class="h${lv(c)}" title="${fmtD(k)}: ${c} acci${c === 1 ? 'ón' : 'ones'}"></i>`; } else cells += '<i class="hx"></i>'; d.setDate(d.getDate() + 1); }
+    cols += `<div>${cells}</div>`;
+  }
+  return `<div class="heat">${cols}</div><div class="row small mut" style="margin-top:8px;gap:6px">${total} acciones · menos <span class="heat inl"><div><i class="h0"></i></div><div><i class="h1"></i></div><div><i class="h2"></i></div><div><i class="h3"></i></div><div><i class="h4"></i></div></span> más</div>`;
+}
+function statsHTML(){
+  const p = proj(), r = computeRisk(p, S.tasks), done = S.tasks.filter(t => t.status === 'completada').length;
+  const byMember = members().map(u => ({ u, dates: S.act84.filter(a => a.actor_id === u.id).map(a => a.created_at) })).sort((a, b) => b.dates.length - a.dates.length);
+  return `<div class="page" style="max-width:1100px">
+    <div class="hgrid" style="margin-top:0;grid-template-columns:1fr 2fr">
+      <div class="card-box"><h3>${ic('traffic-cone')} Estado del proyecto</h3>
+        ${p.is_template || p.archived ? '<p class="mut">No se calcula en plantillas ni archivados.</p>' : `
+        <div class="risk ${r.level}"><span class="light ${r.level} big"></span><div><b>${RISK_TXT[r.level]}</b><br><small class="mut">${r.open} pendientes · ${r.pace} completadas en 14 días${r.left !== null ? ` · ${r.left >= 0 ? `faltan ${r.left} días` : 'entrega pasada'}` : ''}</small></div></div>
+        ${r.reasons.length ? `<ul class="reasons">${r.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p class="mut small">No se han detectado problemas: tareas al día, sin bloqueos y con buen ritmo.</p>'}`}
+        <div class="kpis" style="grid-template-columns:1fr 1fr;margin-top:12px">
+          <div class="card-box kpi" style="box-shadow:none"><b>${S.tasks.length ? Math.round(done / S.tasks.length * 100) : 0}%</b><span>completado</span></div>
+          <div class="card-box kpi" style="box-shadow:none"><b>${fmtMin(S.tlogs.reduce((a, l) => a + l.minutes, 0))}</b><span>dedicadas</span></div></div></div>
+      <div class="card-box"><h3>${ic('chart-line')} Progreso: tareas pendientes día a día</h3>${burndownSVG(p, S.tasks)}</div>
+    </div>
+    <div class="sect">Actividad del equipo · últimas 12 semanas</div>
+    <div class="card-box" style="padding:12px 16px;overflow-x:auto">${byMember.map(x => `<div class="hrow" onclick="go('person',{uid:'${x.u.id}'})"><div class="row" style="width:200px;flex:none">${av(x.u.id)}<span class="small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(pname(x.u.id))}</span></div>${heatGrid(x.dates, 84)}</div>`).join('')}</div>
+  </div>`;
 }

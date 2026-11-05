@@ -454,3 +454,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
 .qrb button.x{padding:4px 6px 4px 0;color:var(--mut)}
 .qrb input{border:0;background:none;padding:4px 10px;font-size:12px;width:200px}
 @media(max-width:860px){.wiki{grid-template-columns:1fr}.wside{position:static}.hrow>.row{width:120px!important}}
+
+/* corona del propietario en su perfil */
+.crowned{position:relative;display:inline-block;flex:none}
+.crown{position:absolute;top:-18px;left:50%;transform:translateX(-50%) rotate(-12deg);font-size:26px;line-height:1;filter:drop-shadow(0 2px 3px #0006)}

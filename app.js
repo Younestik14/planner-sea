@@ -511,7 +511,7 @@ function personHTML(){
   const open = P.tasks.filter(t => t.status !== 'completada'), done = P.tasks.length - open.length;
   const late = open.filter(t => t.due_date && daysLeft(t.due_date) < 0).length;
   return `<div class="page" style="max-width:900px">
-    <div class="card-box prof" style="padding:20px">${av(u.id, 'xl')}<div class="grow"><h1>${esc(pname(u.id))}</h1><div class="mut">${esc(u.email)}</div>
+    <div class="card-box prof" style="padding:20px">${u.is_admin ? `<span class="crowned" title="Propietario">${av(u.id, 'xl')}<span class="crown" aria-hidden="true">👑</span></span>` : av(u.id, 'xl')}<div class="grow"><h1>${esc(pname(u.id))}</h1><div class="mut">${esc(u.email)}</div>
       <div class="row" style="margin-top:8px;flex-wrap:wrap">${u.is_admin ? '<span class="badge own">Propietario</span>' : ''}${adm.map(p => `<span class="badge">Admin · ${esc(p.name)}</span>`).join('')}${!u.is_admin && !adm.length ? '<span class="chip">Miembro</span>' : ''}</div></div>
       <div class="row" style="flex-wrap:wrap">${u.id === S.me.id ? `<button class="btn" onclick="openModal('profile')">${ic('user-cog')} Editar perfil</button>` : ''}
         ${isOwner() ? `<button class="btn" onclick="exportPersonReport('${u.id}')" title="Solo lo ves tú">${ic('file-text')} Informe</button>` : ''}

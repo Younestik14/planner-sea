@@ -106,7 +106,7 @@ function projectHeaderHTML(p){
   <div class="ph" style="--c:${esc(p.color)}">
     <h2>${p.emoji ? `<span class="pemoji">${esc(p.emoji)}</span>` : '<i class="dot"></i>'}${esc(p.name)}</h2>
     <button class="ico" title="${isFav('p', p.id) ? 'Quitar de accesos directos' : 'Añadir a accesos directos de Inicio'}" onclick="toggleFav('p','${p.id}')">${ic('star', isFav('p', p.id) ? 'fav' : '')}</button>
-    ${p.is_template ? '<span class="chip">Plantilla</span>' : ''}${p.archived ? '<span class="chip">Archivado</span>' : ''}${E && !isOwner() ? '<span class="badge">Eres admin</span>' : ''}
+    ${modChip(p.module)}${p.is_template ? '<span class="chip">Plantilla</span>' : ''}${p.archived ? '<span class="chip">Archivado</span>' : ''}${E && !isOwner() ? '<span class="badge">Eres admin</span>' : ''}
     <div class="acts">
       ${okUrl(p.drive_url) ? `<a class="btn" href="${esc(p.drive_url)}" target="_blank" rel="noopener">${ic('folder')} <span class="hide-m">Drive</span></a>` : ''}
       <button class="btn" onclick="exportReport()" title="Informe para imprimir o guardar como PDF">${ic('file-text')} <span class="hide-m">Informe</span></button>
@@ -322,6 +322,7 @@ function projectFormHTML(p){
       <div class="grid4" style="grid-template-columns:2fr 1fr">
         <div><label>Carpeta de Google Drive</label><input id="p-drive" value="${esc(p?.drive_url)}" placeholder="https://drive.google.com/drive/folders/…"></div>
         <div><label>Fecha de entrega</label><input id="p-due" type="date" value="${p?.due_date || ''}"></div>
+        <div><label>Módulo</label>${modSelect('p-mod', p?.module)}</div>
       </div>
       <label>Emoji de portada <small>(sale junto al nombre y en la tarjeta de Inicio)</small></label>
       <div class="row" style="flex-wrap:wrap;gap:4px"><input id="p-emoji" value="${esc(p?.emoji || '')}" maxlength="8" style="width:70px;text-align:center;font-size:18px" placeholder="🙂">

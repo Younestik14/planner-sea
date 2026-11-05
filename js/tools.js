@@ -193,24 +193,26 @@ async function delMat(id){ if (!confirm('¿Eliminar este artículo?')) return; S
 function weekHTML(){
   const base = S.ccal || new Date(), y = base.getFullYear(), m = base.getMonth(), O = isOwner();
   const first = new Date(y, m, 1), start = new Date(y, m, 1 - (first.getDay() + 6) % 7), td = today();
-  const ents = S.projects.filter(p => p.due_date && !p.is_template && !p.archived);
+  const fm = x => !S.calMod || x.module === S.calMod;
+  const ents = S.projects.filter(p => p.due_date && !p.is_template && !p.archived && fm(p)), exams = S.exams.filter(fm);
   let cells = '';
   for (let i = 0; i < 42; i++) {
     const d = new Date(start); d.setDate(start.getDate() + i); const k = isoOf(d);
-    const ex = S.exams.filter(e => e.exam_date === k), en = ents.filter(p => p.due_date === k);
+    const ex = exams.filter(e => e.exam_date === k), en = ents.filter(p => p.due_date === k);
     cells += `<div class="dc ${d.getMonth() !== m ? 'out' : ''} ${k === td ? 'today' : ''}" ${O ? `ondblclick="if(event.target===this){S.examDay='${k}';editExam()}"` : ''}><div class="dn">${d.getDate()}</div>
       ${ex.map(examChip).join('')}
-      ${en.map(p => `<button class="ct ce" style="--p:${p.color || 'var(--acc)'}" title="Entrega: ${esc(p.name)}" onclick="goProject('${p.id}')">${ic('flag', 'sm')} ${esc(p.name)}</button>`).join('')}</div>`;
+      ${en.map(p => `<button class="ct ce" style="--p:${p.color || 'var(--acc)'}" title="Entrega: ${esc(p.name)}${modOf(p.module) ? ' · ' + esc(modOf(p.module).short) : ''}" onclick="goProject('${p.id}')">${ic('flag', 'sm')} ${esc(p.name)}</button>`).join('')}</div>`;
   }
   const mv = k => `S.ccal=new Date(${y},${m + k},1);render()`;
-  const next = [...S.exams.filter(e => e.exam_date >= td).map(e => ({ d: e.exam_date, t: 'Examen', n: e.title })), ...ents.filter(p => p.due_date >= td).map(p => ({ d: p.due_date, t: 'Entrega', n: p.name }))].sort((a, b) => a.d.localeCompare(b.d)).slice(0, 4);
+  const next = [...exams.filter(e => e.exam_date >= td).map(e => ({ d: e.exam_date, t: 'Examen', n: e.title })), ...ents.filter(p => p.due_date >= td).map(p => ({ d: p.due_date, t: 'Entrega', n: p.name }))].sort((a, b) => a.d.localeCompare(b.d)).slice(0, 4);
   return `<div class="page" style="max-width:none"><div class="row" style="flex-wrap:wrap;margin-bottom:6px"><h1 class="grow" style="margin:0">Calendario de clase</h1>
       ${O ? `<button class="btn pri" onclick="S.examDay=null;editExam()">${ic('graduation-cap')} Añadir examen</button>` : ''}</div>
     <p class="mut" style="margin-top:0">Exámenes ${ic('graduation-cap', 'sm')} y entregas de proyectos ${ic('flag', 'sm')} de toda la clase.${O ? ' Doble clic en un día para poner un examen ese día.' : ''}</p>
     ${next.length ? `<div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:14px">${next.map(x => `<span class="chip" style="${x.t === 'Examen' ? 'color:var(--bad-t);background:var(--bad-bg)' : ''}"><b>${x.t}</b>&nbsp;${esc(x.n)} · ${fmtD(x.d)}${x.d === td ? ' (hoy)' : ''}</span>`).join('')}</div>` : ''}
     <div class="row" style="margin-bottom:12px">
       <button class="btn" onclick="${mv(-1)}" aria-label="Mes anterior">${ic('chevron-left')}</button><button class="btn" onclick="S.ccal=null;render()">Hoy</button><button class="btn" onclick="${mv(1)}" aria-label="Mes siguiente">${ic('chevron-right')}</button>
-      <h3 style="margin:0 0 0 8px">${cap(first.toLocaleDateString('es-ES', { month:'long', year:'numeric' }))}</h3></div>
+      <h3 style="margin:0 0 0 8px" class="grow">${cap(first.toLocaleDateString('es-ES', { month:'long', year:'numeric' }))}</h3>
+      <select style="width:auto" aria-label="Filtrar por módulo" onchange="S.calMod=this.value||null;render()"><option value="">Todos los módulos</option>${Object.entries(S.settings?.timetable?.subjects || {}).map(([k, m]) => `<option value="${k}" ${k === S.calMod ? 'selected' : ''}>${esc(m.short)}</option>`).join('')}</select></div>
     <div class="cal">${['lun','mar','mié','jue','vie','sáb','dom'].map(d => `<div class="dh">${d}</div>`).join('')}${cells}</div></div>`;
 }
 
@@ -297,24 +299,28 @@ function usageHTML(){
 }
 
 /* ============ Exámenes (calendario de la clase; solo los crea el propietario) ============ */
-const examChip = e => `<button class="ct cx" title="Examen: ${esc(e.title)}${e.notes ? ' · ' + esc(e.notes) : ''}" onclick="editExam('${e.id}')">${ic('graduation-cap', 'sm')} ${esc(e.title)}</button>`;
+const examChip = e => `<button class="ct cx" ${modOf(e.module) ? `style="--p:${modOf(e.module).color}"` : ''} title="Examen: ${esc(e.title)}${modOf(e.module) ? ' · ' + esc(modOf(e.module).short) : ''}${e.notes ? ' · ' + esc(e.notes) : ''}" onclick="editExam('${e.id}')">${ic('graduation-cap', 'sm')} ${esc(e.title)}</button>`;
+const modOf = k => k && S.settings?.timetable?.subjects?.[k];
+const modChip = k => modOf(k) ? `<span class="chip" style="border-left:3px solid ${modOf(k).color}" title="${esc(modOf(k).name)}">${esc(modOf(k).short)}</span>` : '';
+const modSelect = (id, v) => `<select id="${id}"><option value="">— Sin módulo —</option>${Object.entries(S.settings?.timetable?.subjects || {}).map(([k, m]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${esc(m.short)}</option>`).join('')}</select>`;
 function editExam(id){ S.examId = id || null; if (id) S.examDay = null; openModal('exam'); }
 function examFormHTML(){
   const e = S.exams.find(x => x.id === S.examId), O = isOwner();
   if (e && !O) return `<div class="mod sm"><div class="mh"><h3>Examen</h3><button class="ico" onclick="closeModal()">${ic('x')}</button></div><div class="mb">
-    <p><b>${esc(e.title)}</b><br><span class="mut">${cap(new Date(e.exam_date + 'T00:00').toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' }))}</span></p>
+    <p><b>${esc(e.title)}</b> ${modChip(e.module)}<br><span class="mut">${cap(new Date(e.exam_date + 'T00:00').toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' }))}</span></p>
     ${e.notes ? `<p>${linkify(e.notes)}</p>` : ''}<div class="row"><span class="grow"></span><button class="btn" onclick="closeModal()">Cerrar</button></div></div></div>`;
   if (!O) return '';
   return `<div class="mod sm"><div class="mh"><h3>${e ? 'Editar examen' : 'Nuevo examen'}</h3><button class="ico" onclick="closeModal()">${ic('x')}</button></div><div class="mb">
     <p class="small mut">Lo verá toda la clase en el Calendario de clase y en el calendario de cada proyecto.</p>
     <label>Asignatura o examen</label><input id="ex-title" maxlength="120" value="${esc(e?.title || '')}" placeholder="Ej.: Automatismos – tema 4">
+    <label>Módulo</label>${modSelect('ex-mod', e?.module)}
     <label>Fecha</label><input id="ex-date" type="date" value="${e?.exam_date || S.examDay || today()}">
     <label>Notas (opcional)</label><textarea id="ex-notes" rows="2" maxlength="500" placeholder="Temario, aula, material que hay que llevar…">${esc(e?.notes || '')}</textarea>
     <div class="row" style="margin-top:16px">${e ? `<button class="btn bad" onclick="delExam()">${ic('trash-2', 'sm')} Borrar</button>` : ''}<span class="grow"></span>
       <button class="btn" onclick="closeModal()">Cancelar</button><button class="btn pri" onclick="saveExam()">Guardar</button></div></div></div>`;
 }
 async function saveExam(){
-  const row = { title: $('#ex-title').value.trim(), exam_date: $('#ex-date').value, notes: $('#ex-notes').value.trim() || null };
+  const row = { title: $('#ex-title').value.trim(), exam_date: $('#ex-date').value, notes: $('#ex-notes').value.trim() || null, module: $('#ex-mod').value || null };
   if (!row.title || !row.exam_date) return toast('Pon el nombre y la fecha del examen');
   const r = S.examId ? await q(sb.from('exams').update(row).eq('id', S.examId).select().single()) : await q(sb.from('exams').insert(row).select().single());
   if (!r) return;
@@ -366,7 +372,7 @@ function timetableHTML(){
               : `<button class="btn" onclick="S.ttDraft=JSON.parse(JSON.stringify(S.settings.timetable));S.ttEdit=true;render()">${ic('pencil')} Editar horario</button>` : ''}</div>
     <p class="mut" style="margin-top:0">2º SEA · ${E ? 'Elige la asignatura de cada hora y cambia profesores, aulas y horas.' : 'Se resalta la clase de ahora. Los exámenes de esta semana salen debajo del día.'}</p>
     ${nowClassHTML()}
-    <div class="tt-wrap"><table class="tt"><thead><tr><th></th>${head}</tr></thead><tbody>${rows}</tbody></table></div>${subj}</div>`;
+    <div class="tt-wrap"><table class="tt"><thead><tr><th></th>${head}</tr></thead><tbody>${rows}</tbody></table></div>${subj}${E ? '' : modulesHTML(T)}</div>`;
 }
 function ttAddSubj(){
   const n = prompt('Nombre corto de la asignatura'); if (!n?.trim()) return;
@@ -382,4 +388,15 @@ async function ttSave(){
   Object.values(T.subjects).forEach(s => s.name = s.name || s.short);
   await q(sb.from('app_settings').update({ timetable: T }).eq('id', 1));
   S.settings.timetable = T; S.ttEdit = false; render(); toast('Horario guardado');
+}
+
+// Por módulo: profesor, aula, proyectos y próximos exámenes
+function modulesHTML(T){
+  const td = today();
+  return `<h2 style="margin-top:24px">Por módulo</h2><div class="mods">${Object.entries(T.subjects).map(([k, m]) => {
+    const ps = S.projects.filter(p => p.module === k && !p.is_template && !p.archived), ex = S.exams.filter(e => e.module === k && e.exam_date >= td);
+    return `<div class="card-box mod-c" style="--c:${m.color}"><b>${esc(m.short)}</b><small class="mut">${esc(m.teacher || '—')} · ${esc(m.room || '—')}</small>
+      ${ps.map(p => `<a href="#" onclick="event.preventDefault();goProject('${p.id}')">${ic('folder-kanban', 'sm')} ${esc(p.name)}${p.due_date ? ` <span class="mut">· entrega ${fmtD(p.due_date)}</span>` : ''}</a>`).join('')}
+      ${ex.map(e => `<a href="#" class="bad-t" onclick="event.preventDefault();editExam('${e.id}')">${ic('graduation-cap', 'sm')} ${esc(e.title)} <span class="mut">· ${fmtD(e.exam_date)}</span></a>`).join('')}
+      ${!ps.length && !ex.length ? '<small class="mut">Sin proyectos ni exámenes</small>' : ''}</div>`; }).join('')}</div>`;
 }

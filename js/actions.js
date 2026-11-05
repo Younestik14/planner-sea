@@ -12,7 +12,7 @@ async function saveProject(edit){
   if (!name) return toast('Pon un nombre al proyecto', 'err');
   if (drive && !okUrl(drive)) return toast('El enlace de Drive debe empezar por https://', 'err');
   const row = { name, description: $('#p-desc').value.trim() || null, drive_url: drive || null, color: document.querySelector('input[name=pc]:checked').value,
-                due_date: $('#p-due').value || null, is_template: $('#p-tpl').checked, emoji: $('#p-emoji').value.trim() || null };
+                due_date: $('#p-due').value || null, is_template: $('#p-tpl').checked, emoji: $('#p-emoji').value.trim() || null, module: $('#p-mod').value || null };
   if (edit) { row.archived = $('#p-arch').checked; await q(sb.from('projects').update(row).eq('id', S.pid)); closeModal(); return; }
   let id;
   if ($('#p-from')?.value) { id = await q(sb.rpc('duplicate_project', { p_src: $('#p-from').value, p_name: name, p_template: row.is_template })); await q(sb.from('projects').update(row).eq('id', id)); }

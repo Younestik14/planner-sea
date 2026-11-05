@@ -17,6 +17,6 @@ jobs:
           SB_URL: https://wnmrgnskdcioepmqvxin.supabase.co
           SB_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndubXJnbnNrZGNpb2VwbXF2eGluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM0NDEwNDAsImV4cCI6MjEwOTAxNzA0MH0.5bnrLkc6NBKVXFPQP8Rtvz_reOWFmvGA4ZumgVs2Ux0
         run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' "$SB_URL/rest/v1/app_settings?select=id" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$SB_URL/rest/v1/rpc/keepalive" -H "Content-Type: application/json" -d "{}" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
           echo "Respuesta de Supabase: $code"
           test "$code" = "200"

@@ -158,22 +158,23 @@ function materialHTML(){
   const O = isOwner(), rows = [...S.materials].sort((a, b) => a.position - b.position);
   const tot = rows.reduce((a, m) => a + (m.unit_price ?? 0) * m.qty, 0), by = k => rows.filter(m => m.status === k).reduce((a, m) => a + (m.unit_price ?? 0) * m.qty, 0);
   // los números van en texto con teclado decimal para aceptar la coma española (9,5)
-  // nombre, cantidad y unidad: cualquiera; precio, proveedor, estado y enlace: solo el propietario (lo impone también la base de datos)
-  const cell = (m, k, type = 'text', w = '', E = true) => E ? `<input class="cellin" style="${w}" type="${type === 'url' ? 'url' : 'text'}" ${type === 'number' ? 'inputmode="decimal"' : ''} value="${esc(type === 'number' && m[k] != null ? String(m[k]).replace('.', ',') : m[k] ?? '')}" onclick="event.stopPropagation()" onchange="saveMat('${m.id}','${k}',this.value,'${type}')">` : esc(m[k] ?? '—');
+  // cada uno edita los artículos que añadió; el propietario, todos (lo impone también la base de datos)
+  const mine = m => O || m.created_by === S.me.id;
+  const cell = (m, k, type = 'text', w = '') => mine(m) ? `<input class="cellin" style="${w}" type="${type === 'url' ? 'url' : 'text'}" ${type === 'number' ? 'inputmode="decimal"' : ''} value="${esc(type === 'number' && m[k] != null ? String(m[k]).replace('.', ',') : m[k] ?? '')}" onclick="event.stopPropagation()" onchange="saveMat('${m.id}','${k}',this.value,'${type}')">` : esc(m[k] ?? '—');
   return `<div class="page" style="max-width:none">
     <div class="kpis" style="margin-top:0"><div class="card-box kpi"><b>${eur(tot)}</b><span>Total (sin IVA)</span></div>
       <div class="card-box kpi"><b style="color:var(--warn-t)">${eur(by('pendiente'))}</b><span>Pendiente de pedir</span></div>
       <div class="card-box kpi"><b style="color:var(--acc2)">${eur(by('pedido'))}</b><span>Pedido</span></div>
       <div class="card-box kpi"><b style="color:var(--ok-t)">${eur(by('recibido'))}</b><span>Recibido</span></div></div>
     <div class="row" style="margin:16px 0 10px"><input id="mat-new" style="max-width:420px" placeholder="+ Añadir material (Enter)… Ej.: Cable RZ1-K 2,5 mm²" onkeydown="if(event.key==='Enter')addMat(this)">
-      ${O ? '' : '<span class="small mut">Puedes añadir y cambiar artículo, cantidad y unidad. Precio, proveedor, estado y enlace los pone el propietario.</span>'}
+      ${O ? '' : '<span class="small mut">Puedes añadir artículos y cambiar o borrar los que hayas añadido tú.</span>'}
       <span class="grow"></span><button class="btn" onclick="exportExcel()">${ic('file-spreadsheet')} Exportar a Excel</button></div>
     <div class="card-box tablewrap"><table class="ltable mat"><thead><tr><th>Artículo</th><th>Cantidad</th><th>Ud.</th><th>Precio ud.</th><th>Total</th><th>Proveedor</th><th>Estado</th><th>Enlace</th><th></th></tr></thead>
     <tbody>${rows.map(m => `<tr style="cursor:default"><td>${cell(m, 'name', 'text', 'min-width:200px')}</td><td>${cell(m, 'qty', 'number', 'width:80px')}</td><td>${cell(m, 'unit', 'text', 'width:60px')}</td>
-      <td>${O ? cell(m, 'unit_price', 'number', 'width:90px') : eur(m.unit_price)}</td><td><b>${m.unit_price != null ? eur(m.unit_price * m.qty) : '—'}</b></td><td>${cell(m, 'supplier', 'text', 'width:130px', O)}</td>
-      <td>${O ? `<select class="cellsel" onchange="saveMat('${m.id}','status',this.value)">${Object.entries(MAT_STATUS).map(([k, [n]]) => `<option value="${k}" ${m.status === k ? 'selected' : ''}>${n}</option>`).join('')}</select>` : `<span class="chip ${MAT_STATUS[m.status][1]}">${MAT_STATUS[m.status][0]}</span>`}</td>
-      <td>${O ? cell(m, 'link', 'url', 'width:130px') : ''}${okUrl(m.link) ? ` <a href="${esc(m.link)}" target="_blank" rel="noopener" title="Abrir">${ic('external-link', 'sm')}</a>` : ''}</td>
-      <td>${O || m.created_by === S.me.id ? `<button class="ico" title="Eliminar" onclick="delMat('${m.id}')">${ic('trash-2', 'sm')}</button>` : ''}</td></tr>`).join('') || `<tr><td colspan="9">${emptyState('package', 'Sin material todavía', 'Añade el primer artículo arriba.')}</td></tr>`}</tbody></table></div></div>`;
+      <td>${mine(m) ? cell(m, 'unit_price', 'number', 'width:90px') : eur(m.unit_price)}</td><td><b>${m.unit_price != null ? eur(m.unit_price * m.qty) : '—'}</b></td><td>${cell(m, 'supplier', 'text', 'width:130px')}</td>
+      <td>${mine(m) ? `<select class="cellsel" onchange="saveMat('${m.id}','status',this.value)">${Object.entries(MAT_STATUS).map(([k, [n]]) => `<option value="${k}" ${m.status === k ? 'selected' : ''}>${n}</option>`).join('')}</select>` : `<span class="chip ${MAT_STATUS[m.status][1]}">${MAT_STATUS[m.status][0]}</span>`}</td>
+      <td>${mine(m) ? cell(m, 'link', 'url', 'width:130px') : ''}${okUrl(m.link) ? ` <a href="${esc(m.link)}" target="_blank" rel="noopener" title="Abrir">${ic('external-link', 'sm')}</a>` : ''}</td>
+      <td>${mine(m) ? `<button class="ico" title="Eliminar" onclick="delMat('${m.id}')">${ic('trash-2', 'sm')}</button>` : ''}</td></tr>`).join('') || `<tr><td colspan="9">${emptyState('package', 'Sin material todavía', 'Añade el primer artículo arriba.')}</td></tr>`}</tbody></table></div></div>`;
 }
 async function addMat(el){
   const name = el.value.trim(); if (!name) return; el.value = '';

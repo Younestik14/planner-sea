@@ -455,14 +455,6 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
 .qrb input{border:0;background:none;padding:4px 10px;font-size:12px;width:200px}
 @media(max-width:860px){.wiki{grid-template-columns:1fr}.wside{position:static}.hrow>.row{width:120px!important}}
 
-/* corona del propietario en su perfil */
-.crw{position:relative;display:inline-flex;flex:none;vertical-align:middle}
-.crw>.av{margin:0}
-.avs .crw{margin-left:-6px}
-.crown{position:absolute;top:-9px;left:50%;transform:translateX(-50%) rotate(-12deg);font-size:12px;line-height:1;pointer-events:none;filter:drop-shadow(0 1px 2px #0007);z-index:1}
-.crw.l .crown{top:-12px;font-size:15px}
-.crw.xl .crown{top:-18px;font-size:26px}
-
 /* ===== colores principales ===== */
 :root[data-accent=orange]{--acc:#f39200;--acc2:#fdba74;--acc-bg:#f392001f}
 :root[data-accent=green]{--acc:#16a34a;--acc2:#4ade80;--acc-bg:#16a34a1f}

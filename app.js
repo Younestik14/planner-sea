@@ -69,8 +69,7 @@ function av(id, cls = ''){
   const ini = n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
   const h = url ? `<img class="av ${cls}" src="${esc(url)}" title="${esc(n)}" alt="" referrerpolicy="no-referrer">`
     : `<span class="av ${cls}" style="background:${p?.color ? esc(p.color) : `hsl(${hue(id || 'x')} 55% 45%)`}" title="${esc(n)}">${esc(ini)}</span>`;
-  // Corona para el propietario (solo él tiene is_admin)
-  return p?.is_admin ? `<span class="crw ${cls}" title="${esc(n)} · Propietario">${h}<span class="crown" aria-hidden="true">👑</span></span>` : h;
+  return h;
 }
 function dueChip(t){
   if (!t.due_date) return '';

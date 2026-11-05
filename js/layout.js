@@ -197,7 +197,7 @@ async function readAll(){ S.notifs.forEach(n => n.read = true); render(); await 
 function renderModal(){
   const m = S.modal;
   if (!m) { $('#modal').innerHTML = ''; return; }
-  const extra = { minutes: minutesHTML, agreements: agreementsHTML, wikinew: wikiNewHTML, calc: calcHTML, banner: bannerFormHTML }[m];
+  const extra = { minutes: minutesHTML, agreements: agreementsHTML, wikinew: wikiNewHTML, calc: calcHTML, banner: bannerFormHTML, exam: examFormHTML }[m];
   const html = extra ? extra() : m === 'task' ? taskHTML() : m === 'members' ? membersHTML() : m === 'summary' ? summaryHTML() : m === 'keys' ? keysHTML() : m === 'profile' ? profileHTML()
              : projectFormHTML(m === 'project-edit' ? proj() : null);
   if (!html) { S.modal = null; $('#modal').innerHTML = ''; return; }
@@ -242,6 +242,7 @@ function taskHTML(){
         <label>Asignado a</label>
         <div class="pick">${E
           ? members().map(p => `<label class="${assigned.has(p.id) ? 'on' : ''}"><input type="checkbox" ${assigned.has(p.id) ? 'checked' : ''} onchange="toggleAssignee('${p.id}',this.checked)">${av(p.id)}${esc(pname(p.id))}</label>`).join('')
+            + (members().every(p => assigned.has(p.id)) ? `<button class="btn sm ghost" onclick="assignAll(false)">${ic('users', 'sm')} Quitar a toda la clase</button>` : `<button class="btn sm" onclick="assignAll(true)">${ic('users', 'sm')} Toda la clase</button>`)
           : [...assigned].map(id => `<label class="on">${av(id)}${esc(pname(id))}</label>`).join('') || '<span class="mut">Nadie asignado</span>'}</div>
         ${!E && assigned.has(S.me.id) && t.status !== 'completada' ? (t.review_requested
           ? `<div class="banner warn">${ic('eye')} Has avisado de que terminaste tu parte. Un admin la revisará.</div>`

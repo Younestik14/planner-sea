@@ -195,15 +195,16 @@ function weekHTML(){
   const days = Array.from({ length: 7 }, (_, i) => addDays(mon, i)), td = today();
   const open = S.mine.filter(t => !proj(t.project_id)?.is_template && !proj(t.project_id)?.archived);
   const late = open.filter(t => t.status !== 'completada' && t.due_date && t.due_date < td);
-  const col = d => { const ts = open.filter(t => t.due_date === d), ms = S.meetings.filter(m => isoOf(new Date(m.meeting_at)) === d);
+  const col = d => { const ts = open.filter(t => t.due_date === d), ms = S.meetings.filter(m => isoOf(new Date(m.meeting_at)) === d), ex = S.exams.filter(e => e.exam_date === d);
     return `<div class="wday ${d === td ? 'today' : ''} ${d < td ? 'past' : ''}"><div class="wd-h"><b>${cap(new Date(d + 'T00:00').toLocaleDateString('es-ES', { weekday:'short' }))}</b><span>${new Date(d + 'T00:00').getDate()}</span></div>
+      ${ex.map(e => `<button class="wd-m wd-x" onclick="editExam('${e.id}')">${ic('graduation-cap', 'sm')} <b>Examen</b><br><small>${esc(e.title)}</small></button>`).join('')}
       ${ms.map(m => `<button class="wd-m" onclick="goProject('${m.project_id}','diary')">${ic('calendar-clock', 'sm')} <b>${new Date(m.meeting_at).toLocaleTimeString('es-ES', { hour:'2-digit', minute:'2-digit' })}</b> Reunión<br><small>${esc(proj(m.project_id)?.name || '')}${m.place ? ' · ' + esc(m.place) : ''}</small></button>`).join('')}
       ${ts.map(t => `<button class="wd-t ${t.status === 'completada' ? 'done' : ''}" style="--p:${PRIO[t.priority][1]}" onclick="jump('${t.project_id}','${t.id}')"><b>${esc(t.title)}</b><small>${esc(proj(t.project_id)?.name || '')}</small></button>`).join('')}
-      ${!ts.length && !ms.length ? '<div class="empty">—</div>' : ''}</div>`; };
+      ${!ts.length && !ms.length && !ex.length ? '<div class="empty">—</div>' : ''}</div>`; };
   const mv = n => `S.weekStart='${addDays(mon, n)}';render()`;
   return `<div class="page" style="max-width:none"><div class="row" style="flex-wrap:wrap"><h1 class="grow">Mi semana</h1>
       <button class="btn" onclick="${mv(-7)}" aria-label="Semana anterior">${ic('chevron-left')}</button><button class="btn" onclick="S.weekStart=null;render()">Esta semana</button><button class="btn" onclick="${mv(7)}" aria-label="Semana siguiente">${ic('chevron-right')}</button></div>
-    <p class="mut" style="margin-top:0">${fmtD(days[0])} – ${fmtD(days[6])} · tus tareas por fecha límite y las reuniones de todos los proyectos.</p>
+    <p class="mut" style="margin-top:0">${fmtD(days[0])} – ${fmtD(days[6])} · tus tareas por fecha límite, los exámenes y las reuniones de todos los proyectos.</p>
     ${late.length ? `<div class="banner bad" style="margin-bottom:12px;cursor:pointer" onclick="go('mine')">${ic('triangle-alert')} Tienes ${late.length} tarea${late.length > 1 ? 's' : ''} vencida${late.length > 1 ? 's' : ''}. Pulsa para verlas.</div>` : ''}
     <div class="week">${days.map(col).join('')}</div></div>`;
 }
@@ -288,4 +289,35 @@ function usageHTML(){
       <div class="card-box"><h3>${ic('layout-grid')} Pestañas más vistas</h3>${bar(views, VIEW_NAMES, 'view:') || '<p class="mut">Sin datos todavía.</p>'}
         <h3 style="margin-top:18px">${ic('sparkles')} Funciones usadas</h3>${bar(feats, FEATURES, '') || '<p class="mut">Sin datos todavía.</p>'}
         ${unused.length ? `<p class="small mut" style="margin-top:12px"><b>Sin usar en 30 días:</b> ${unused.map(k => FEATURES[k]).join(', ')}</p>` : ''}</div></div></div>`;
+}
+
+/* ============ Exámenes (calendario de la clase; solo los crea el propietario) ============ */
+const examChip = e => `<button class="ct cx" title="Examen: ${esc(e.title)}${e.notes ? ' · ' + esc(e.notes) : ''}" onclick="editExam('${e.id}')">${ic('graduation-cap', 'sm')} ${esc(e.title)}</button>`;
+function editExam(id){ S.examId = id || null; openModal('exam'); }
+function examFormHTML(){
+  const e = S.exams.find(x => x.id === S.examId), O = isOwner();
+  if (e && !O) return `<div class="mod sm"><div class="mh"><h3>Examen</h3><button class="ico" onclick="closeModal()">${ic('x')}</button></div><div class="mb">
+    <p><b>${esc(e.title)}</b><br><span class="mut">${cap(new Date(e.exam_date + 'T00:00').toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' }))}</span></p>
+    ${e.notes ? `<p>${linkify(e.notes)}</p>` : ''}<div class="row"><span class="grow"></span><button class="btn" onclick="closeModal()">Cerrar</button></div></div></div>`;
+  if (!O) return '';
+  return `<div class="mod sm"><div class="mh"><h3>${e ? 'Editar examen' : 'Nuevo examen'}</h3><button class="ico" onclick="closeModal()">${ic('x')}</button></div><div class="mb">
+    <p class="small mut">Lo verá toda la clase en el calendario de todos los proyectos y en «Mi semana».</p>
+    <label>Asignatura o examen</label><input id="ex-title" maxlength="120" value="${esc(e?.title || '')}" placeholder="Ej.: Automatismos – tema 4">
+    <label>Fecha</label><input id="ex-date" type="date" value="${e?.exam_date || S.examDay || today()}">
+    <label>Notas (opcional)</label><textarea id="ex-notes" rows="2" maxlength="500" placeholder="Temario, aula, material que hay que llevar…">${esc(e?.notes || '')}</textarea>
+    <div class="row" style="margin-top:16px">${e ? `<button class="btn bad" onclick="delExam()">${ic('trash-2', 'sm')} Borrar</button>` : ''}<span class="grow"></span>
+      <button class="btn" onclick="closeModal()">Cancelar</button><button class="btn pri" onclick="saveExam()">Guardar</button></div></div></div>`;
+}
+async function saveExam(){
+  const row = { title: $('#ex-title').value.trim(), exam_date: $('#ex-date').value, notes: $('#ex-notes').value.trim() || null };
+  if (!row.title || !row.exam_date) return toast('Pon el nombre y la fecha del examen');
+  const r = S.examId ? await q(sb.from('exams').update(row).eq('id', S.examId).select().single()) : await q(sb.from('exams').insert(row).select().single());
+  if (!r) return;
+  S.exams = [...S.exams.filter(x => x.id !== r.id), r].sort((a, b) => a.exam_date.localeCompare(b.exam_date));
+  closeModal(); toast('Examen guardado');
+}
+async function delExam(){
+  if (!confirm('¿Borrar este examen del calendario?')) return;
+  await q(sb.from('exams').delete().eq('id', S.examId));
+  S.exams = S.exams.filter(x => x.id !== S.examId); closeModal(); toast('Examen borrado');
 }

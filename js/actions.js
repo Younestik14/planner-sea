@@ -197,6 +197,16 @@ async function toggleAssignee(uid, on, tid = S.tid){
   if (on) await q(sb.from('task_assignees').insert({ task_id: tid, user_id: uid }));
   else await q(sb.from('task_assignees').delete().eq('task_id', tid).eq('user_id', uid));
 }
+async function assignAll(on, tid = S.tid){
+  const t = S.tasks.find(x => x.id === tid), had = new Set(t.task_assignees.map(a => a.user_id));
+  const ids = on ? members().map(u => u.id).filter(id => !had.has(id)) : [...had];
+  if (!ids.length) return;
+  const add = () => q(sb.from('task_assignees').upsert(ids.map(u => ({ task_id: tid, user_id: u })), { ignoreDuplicates: true }));
+  const del = () => q(sb.from('task_assignees').delete().eq('task_id', tid).in('user_id', ids));
+  pushUndo(on ? 'asignar a toda la clase' : 'quitar a toda la clase', on ? del : add);
+  await (on ? add() : del());
+  toast(on ? `Asignada a toda la clase (${members().length})` : 'Quitada a toda la clase');
+}
 async function addDep(depId){ await q(sb.from('task_deps').insert({ task_id: S.tid, depends_on: depId })); }
 async function delDep(depId){ await q(sb.from('task_deps').delete().match({ task_id: S.tid, depends_on: depId })); }
 async function addSub(el){

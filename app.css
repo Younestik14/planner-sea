@@ -609,3 +609,7 @@ body.present .layout{min-height:100vh}
 .ubar i{display:block;height:8px;border-radius:4px;background:var(--acc)}
 .ubar b{text-align:right}
 @media(max-width:860px){.week{grid-template-columns:repeat(7,150px)}.meet{flex-direction:column}.gbanner{margin:12px 14px 0}}
+
+/* exámenes */
+.cal .ct.cx{--p:var(--bad);background:var(--bad-bg);color:var(--bad-t);font-weight:600;display:flex;gap:4px;align-items:center}
+.wd-m.wd-x{border-left-color:var(--bad);background:var(--bad-bg)}

@@ -24,7 +24,7 @@ const REACT_POST = ['👍','✅','👀','❤️','🎉'], REACT_MSG = ['👍','�
 const S = { user:null, me:null, profiles:[], projects:[], padmins:[], notifs:[], mine:[], reads:{}, recent:[], review:[], weekMin:0,
   pid:null, tid:null, view:'home', uid:null, person:null,
   buckets:[], tasks:[], trash:[], activity:[], deps:[], tlogs:[], posts:[], preacts:[], votes:[], cdraft:[], tvotes:[], wiki:[], wid:null, wedit:null, revs:null, act84:[],
-  listSort:{ k:'due', d:1 }, listQ:'', qr:false, rsvps:[], materials:[], meetings:[], priv:'',
+  listSort:{ k:'due', d:1 }, listQ:'', qr:false, rsvps:[], materials:[], meetings:[], exams:[], priv:'',
   comments:[], tact:[], subs:[], reacts:[],
   onlyMine:false, label:'', cal:null, found:null, sel:new Set(), selMode:false, pop:null, reply:null, hidden:new Set(),
   sort: ls('sort') || 'manual', compact: !!ls('compact'), panel:null, modal:null, seen:null, urls:{},
@@ -210,7 +210,7 @@ async function buildSummary(){
 /* ============ datos ============ */
 async function loadBase(){
   const monday = (() => { const d = new Date(); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return isoOf(d); })();
-  const [profiles, projects, , mine, reads, padmins, recent, review, week, settings, meetings] = await Promise.all([
+  const [profiles, projects, , mine, reads, padmins, recent, review, week, settings, meetings, exams] = await Promise.all([
     q(sb.from('profiles').select('*')),
     q(sb.from('projects').select('*, tasks(status,deleted_at)').order('created_at')),
     loadNotifs(),
@@ -222,8 +222,9 @@ async function loadBase(){
     q(sb.from('time_logs').select('minutes').eq('user_id', S.me.id).gte('logged_on', monday)),
     q(sb.from('app_settings').select('*').maybeSingle()),
     q(sb.from('posts').select('id,project_id,meeting_at,place').eq('kind', 'meeting').gte('meeting_at', new Date(Date.now() - 864e5 * 8).toISOString()).order('meeting_at').limit(40)),
+    q(sb.from('exams').select('*').order('exam_date')),
   ]);
-  S.meetings = meetings;
+  S.meetings = meetings; S.exams = exams;
   S.settings = settings || {};
   projects.forEach(p => p.tasks = p.tasks.filter(t => !t.deleted_at));
   Object.assign(S, { profiles, projects, mine, padmins, recent, review });
@@ -309,7 +310,7 @@ async function signImages(bucket, paths){
 
 // Tiempo real selectivo: cada cambio recarga solo la parte afectada (avisos, base, proyecto abierto o tarea abierta)
 const RT_SKIP = new Set(['activity', 'task_reads', 'usage_events', 'admin_log', 'email_sent', 'wiki_revisions', 'task_private_notes']);
-const RT_BASE = new Set(['projects', 'project_admins', 'app_settings']);  // + reuniones (posts) para Mi semana
+const RT_BASE = new Set(['projects', 'project_admins', 'app_settings', 'exams']);  // + reuniones (posts) para Mi semana
 let tmr, rtq = {};
 function relProject(t, r){
   if ('project_id' in r) return r.project_id === S.pid;

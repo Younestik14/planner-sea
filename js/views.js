@@ -219,15 +219,17 @@ function calHTML(){
   let cells = '';
   for (let i = 0; i < 42; i++) {
     const d = new Date(start); d.setDate(start.getDate() + i); const k = isoOf(d);
-    const ts = S.tasks.filter(t => t.due_date === k && !S.hidden.has(t.id));
+    const ts = S.tasks.filter(t => t.due_date === k && !S.hidden.has(t.id)), ex = S.exams.filter(e => e.exam_date === k);
     cells += `<div class="dc ${d.getMonth() !== m ? 'out' : ''} ${k === td ? 'today' : ''} ${k === p.due_date ? 'due' : ''}" ${adminOf() ? `ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="calDrop(event,'${k}')"` : ''}>
       <div class="dn">${d.getDate()}${k === p.due_date ? ` · <b style="color:var(--bad-t)">Entrega</b>` : ''}</div>
+      ${ex.map(examChip).join('')}
       ${ts.map(t => `<button class="ct ${t.status === 'completada' ? 'done' : ''}" style="--p:${PRIO[t.priority][1]}" title="${esc(t.title)}${adminOf() ? ' · arrastra para cambiar la fecha' : ''}" onclick="openTask('${t.id}')" ${adminOf() ? `draggable="true" ondragstart="event.dataTransfer.setData('text/plain','${t.id}')"` : ''}>${esc(t.title)}</button>`).join('')}</div>`;
   }
   const mv = k => `S.cal=new Date(${y},${m + k},1);render()`;
   return `<div class="page" style="max-width:none"><div class="row" style="margin-bottom:12px">
       <button class="btn" onclick="${mv(-1)}" aria-label="Mes anterior">${ic('chevron-left')}</button><button class="btn" onclick="S.cal=null;render()">Hoy</button><button class="btn" onclick="${mv(1)}" aria-label="Mes siguiente">${ic('chevron-right')}</button>
-      <h3 style="margin:0 0 0 8px">${cap(first.toLocaleDateString('es-ES', { month:'long', year:'numeric' }))}</h3></div>
+      <h3 style="margin:0 0 0 8px" class="grow">${cap(first.toLocaleDateString('es-ES', { month:'long', year:'numeric' }))}</h3>
+      ${isOwner() ? `<button class="btn" onclick="editExam()">${ic('graduation-cap')} Añadir examen</button>` : ''}</div>
     <div class="cal">${['lun','mar','mié','jue','vie','sáb','dom'].map(d => `<div class="dh">${d}</div>`).join('')}${cells}</div></div>`;
 }
 

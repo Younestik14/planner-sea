@@ -1,0 +1,22 @@
+# Supabase (plan gratuito) pausa el proyecto tras 7 días sin uso.
+# Cada 3 días GitHub hace una consulta a la base de datos para que siga activa.
+name: Mantener activa la base de datos
+
+on:
+  schedule:
+    - cron: '17 6 */3 * *'   # cada 3 días a las 6:17 UTC
+  workflow_dispatch:          # botón "Run workflow" para lanzarlo a mano
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consultar Supabase
+        env:
+          # Clave pública (anon): la misma que usa la web; la protegen las reglas RLS
+          SB_URL: https://wnmrgnskdcioepmqvxin.supabase.co
+          SB_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndubXJnbnNrZGNpb2VwbXF2eGluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM0NDEwNDAsImV4cCI6MjEwOTAxNzA0MH0.5bnrLkc6NBKVXFPQP8Rtvz_reOWFmvGA4ZumgVs2Ux0
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$SB_URL/rest/v1/app_settings?select=id" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
+          echo "Respuesta de Supabase: $code"
+          test "$code" = "200"

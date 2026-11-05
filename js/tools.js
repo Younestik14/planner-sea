@@ -274,7 +274,7 @@ function auditHTML(){
 const FEATURES = { 'f:palette': 'Menú Ctrl+K', 'f:ctx': 'Clic derecho en tarjetas', 'f:nl': 'Tareas con texto natural', 'f:undo': 'Ctrl+Z', 'f:dragdate': 'Arrastrar fechas',
   'f:present': 'Pantalla de clase', 'f:report': 'Informe PDF', 'f:excel': 'Excel', 'f:quick': 'Respuestas rápidas', 'f:wikicomment': 'Comentarios en notas', 'f:meeting': 'Convocar reunión',
   'f:rsvp': 'Responder a reunión', 'f:agreements': 'Acuerdos → tareas', 'f:calc': 'Calculadoras', 'f:calcinsert': 'Insertar cálculo', 'f:material': 'Lista de material', 'f:wikitemplate': 'Plantillas de notas' };
-const VIEW_NAMES = { home: 'Inicio', mine: 'Mis tareas', week: 'Calendario de clase', person: 'Perfiles', compare: 'Comparar', audit: 'Registro', usage: 'Uso', ...Object.fromEntries(PVIEWS.map(v => [v[0], v[1]])) };
+const VIEW_NAMES = { home: 'Inicio', mine: 'Mis tareas', week: 'Calendario de clase', timetable: 'Horario', person: 'Perfiles', compare: 'Comparar', audit: 'Registro', usage: 'Uso', ...Object.fromEntries(PVIEWS.map(v => [v[0], v[1]])) };
 async function loadUsage(){ S.usage = isOwner() ? await q(sb.from('usage_events').select('user_id,kind,at').gte('at', addDays(today(), -30)).order('at').limit(20000)) : []; }
 function usageHTML(){
   const ev = S.usage || [], days = Array.from({ length: 30 }, (_, i) => addDays(today(), i - 29));
@@ -325,4 +325,61 @@ async function delExam(){
   if (!confirm('¿Borrar este examen del calendario?')) return;
   await q(sb.from('exams').delete().eq('id', S.examId));
   S.exams = S.exams.filter(x => x.id !== S.examId); closeModal(); toast('Examen borrado');
+}
+
+/* ============ Horario de clase (lo ven todos; solo lo edita el propietario) ============ */
+const DAYS5 = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+const ttMin = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
+// Clase actual y siguiente de hoy: { now, next, brk }
+function ttNow(){
+  const T = S.settings?.timetable; if (!T) return {};
+  const d = new Date(), wd = d.getDay(), min = d.getHours() * 60 + d.getMinutes(); if (wd < 1 || wd > 5) return {};
+  const row = T.grid[wd] || [], i = T.slots.findIndex(([a, b]) => min >= ttMin(a) && min < ttMin(b)), n = T.slots.findIndex(([a]) => ttMin(a) > min);
+  return { now: i >= 0 && row[i] ? { s: T.subjects[row[i]], i } : null, next: n >= 0 && row[n] ? { s: T.subjects[row[n]], i: n } : null,
+    brk: T.break && min >= ttMin(T.break[0]) && min < ttMin(T.break[1]) };
+}
+function nowClassHTML(){
+  const { now, next, brk } = ttNow(), T = S.settings?.timetable; if (!now && !next && !brk) return '';
+  const it = (lbl, x) => `<span><small class="mut">${lbl}</small> <b style="color:${x.s?.color}">${esc(x.s?.short || '—')}</b> <span class="mut">· ${esc(x.s?.room || '')} · ${T.slots[x.i].join('–')}</span></span>`;
+  return `<div class="card-box nowcls" onclick="go('timetable')">${ic('clock')} ${now ? it('Ahora', now) : brk ? `<span><b>Descanso</b> <span class="mut">hasta las ${T.break[1]}</span></span>` : ''}${next ? it('Siguiente', next) : ''}</div>`;
+}
+function timetableHTML(){
+  const T = S.ttEdit ? S.ttDraft : S.settings?.timetable, O = isOwner();
+  if (!T) return `<div class="page">${emptyState('clock', 'Aún no hay horario', O ? '' : 'Cuando el propietario lo ponga, aparecerá aquí.')}</div>`;
+  const E = S.ttEdit, wd = new Date().getDay(), { now } = ttNow(), td = today();
+  const mon = (() => { const d = new Date(); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return isoOf(d); })();
+  const codes = Object.keys(T.subjects);
+  const cell = (dia, i) => { const c = T.grid[dia]?.[i], s = T.subjects[c];
+    if (E) return `<td><select onchange="S.ttDraft.grid[${dia}][${i}]=this.value||null;render()"><option value="">— libre —</option>${codes.map(k => `<option value="${k}" ${k === c ? 'selected' : ''}>${esc(T.subjects[k].short)}</option>`).join('')}</select></td>`;
+    return `<td class="${dia === wd && now?.i === i ? 'now' : ''}">${s ? `<div class="tt-c" style="--c:${s.color}" title="${esc(s.name)}"><b>${esc(s.short)}</b><small>${ic('user', 'sm')} ${esc(s.teacher || '—')}</small><small>${ic('map-pin', 'sm')} ${esc(s.room || '—')}</small></div>` : ''}</td>`; };
+  const rows = T.slots.map(([a, b], i) => `${i === T.breakAfter && T.break ? `<tr class="tt-brk"><th>${T.break.join('–')}</th><td colspan="5">Descanso</td></tr>` : ''}
+    <tr><th>${E ? `<input value="${a}" onchange="S.ttDraft.slots[${i}][0]=this.value"><input value="${b}" onchange="S.ttDraft.slots[${i}][1]=this.value">` : `${a}<br><small>${b}</small>`}</th>${[1, 2, 3, 4, 5].map(d => cell(d, i)).join('')}</tr>`).join('');
+  const head = [1, 2, 3, 4, 5].map(d => { const k = addDays(mon, d - 1), ex = S.exams.filter(e => e.exam_date === k);
+    return `<th class="${d === wd ? 'today' : ''}">${DAYS5[d - 1]}<small> ${new Date(k + 'T00:00').getDate()}</small>${ex.map(e => `<div class="tt-ex" onclick="editExam('${e.id}')">${ic('graduation-cap', 'sm')} ${esc(e.title)}</div>`).join('')}</th>`; }).join('');
+  const subj = E ? `<h3 style="margin-top:20px">Asignaturas</h3><table class="ltable tt-subj"><thead><tr><th>Color</th><th>Nombre corto</th><th>Profesor</th><th>Aula</th><th></th></tr></thead><tbody>
+    ${codes.map(k => { const s = T.subjects[k], f = (p, ph) => `<input value="${esc(s[p] || '')}" placeholder="${ph}" onchange="S.ttDraft.subjects['${k}'].${p}=this.value">`;
+      return `<tr><td><input type="color" value="${s.color}" onchange="S.ttDraft.subjects['${k}'].color=this.value;render()"></td><td>${f('short', 'Nombre')}</td><td>${f('teacher', 'Profesor')}</td><td>${f('room', 'Aula')}</td>
+        <td><button class="ico" title="Quitar asignatura" onclick="ttDelSubj('${k}')">${ic('trash-2', 'sm')}</button></td></tr>`; }).join('')}</tbody></table>
+    <button class="btn sm" style="margin-top:8px" onclick="ttAddSubj()">${ic('plus', 'sm')} Añadir asignatura</button>` : '';
+  return `<div class="page" style="max-width:none"><div class="row" style="flex-wrap:wrap;margin-bottom:6px"><h1 class="grow" style="margin:0">Horario</h1>
+      ${O ? E ? `<button class="btn" onclick="S.ttEdit=false;render()">Cancelar</button><button class="btn pri" onclick="ttSave()">${ic('check')} Guardar horario</button>`
+              : `<button class="btn" onclick="S.ttDraft=JSON.parse(JSON.stringify(S.settings.timetable));S.ttEdit=true;render()">${ic('pencil')} Editar horario</button>` : ''}</div>
+    <p class="mut" style="margin-top:0">2º SEA · ${E ? 'Elige la asignatura de cada hora y cambia profesores, aulas y horas.' : 'Se resalta la clase de ahora. Los exámenes de esta semana salen debajo del día.'}</p>
+    ${nowClassHTML()}
+    <div class="tt-wrap"><table class="tt"><thead><tr><th></th>${head}</tr></thead><tbody>${rows}</tbody></table></div>${subj}</div>`;
+}
+function ttAddSubj(){
+  const n = prompt('Nombre corto de la asignatura'); if (!n?.trim()) return;
+  S.ttDraft.subjects['s' + Date.now()] = { name: n.trim(), short: n.trim(), teacher: '', room: '', color: '#64748b' }; render();
+}
+function ttDelSubj(k){
+  if (!confirm('¿Quitar esta asignatura? Sus horas quedarán libres.')) return;
+  delete S.ttDraft.subjects[k]; Object.values(S.ttDraft.grid).forEach(r => r.forEach((c, i) => c === k && (r[i] = null))); render();
+}
+async function ttSave(){
+  const T = S.ttDraft;
+  if (T.slots.some(([a, b]) => !/^\d{1,2}:\d{2}$/.test(a) || !/^\d{1,2}:\d{2}$/.test(b))) return toast('Revisa las horas: formato 15:15', 'err');
+  Object.values(T.subjects).forEach(s => s.name = s.name || s.short);
+  await q(sb.from('app_settings').update({ timetable: T }).eq('id', 1));
+  S.settings.timetable = T; S.ttEdit = false; render(); toast('Horario guardado');
 }

@@ -12,6 +12,7 @@ function homeHTML(){
   return `<div class="page">
     <h1>${hi}, ${esc(first(S.me.id))} 👋</h1>
     <p class="mut" style="margin:0">${cap(new Date().toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' }))}</p>
+    ${nowClassHTML()}
     ${favsHTML()}
     <div class="kpis">
       <div class="card-box kpi"><b>${open.length}</b><span>Tareas pendientes</span></div>

@@ -67,6 +67,7 @@ function sideHTML(){
     <button class="nav ${S.view === 'home' ? 'on' : ''}" onclick="go('home')">${ic('house')} Inicio</button>
     <button class="nav ${S.view === 'mine' ? 'on' : ''}" onclick="go('mine')">${ic('list-todo')} Mis tareas <span class="cnt">${S.mine.filter(t => t.status !== 'completada').length}</span></button>
     <button class="nav ${S.view === 'week' ? 'on' : ''}" onclick="go('week')">${ic('calendar-range')} Calendario de clase</button>
+    <button class="nav ${S.view === 'timetable' ? 'on' : ''}" onclick="go('timetable')">${ic('clock')} Horario</button>
     ${isOwner() ? `<h4>Administración</h4>
       <button class="nav ${S.view === 'compare' ? 'on' : ''}" onclick="go('compare')">${ic('columns-3')} Comparar proyectos</button>
       <button class="nav ${S.view === 'usage' ? 'on' : ''}" onclick="go('usage')">${ic('chart-no-axes-column')} Estadísticas de uso</button>
@@ -86,6 +87,7 @@ function mainHTML(){
   if (S.view === 'person') return personHTML();
   if (S.view === 'compare') return compareHTML();
   if (S.view === 'week') return weekHTML();
+  if (S.view === 'timetable') return timetableHTML();
   if (S.view === 'audit') return auditHTML();
   if (S.view === 'usage') return usageHTML();
   const p = proj();

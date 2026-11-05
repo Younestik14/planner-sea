@@ -133,7 +133,7 @@ function applyTheme(){
   root.dataset.accent = a; root.dataset.contrast = c ? 'high' : '';
   ls('accent', a); ls('contrast', c);
 }
-const DEFAULT_TABS = ['board', 'list', 'diary', 'wiki', 'stats'];
+const DEFAULT_TABS = ['board', 'gantt', 'diary', 'cal', 'files', 'material'];
 const CARD_FIELDS = [['prio', 'Prioridad'], ['labels', 'Etiquetas'], ['due', 'Fecha límite'], ['subtasks', 'Subtareas'], ['comments', 'Mensajes'], ['hours', 'Horas'], ['votes', 'Votos'], ['avatars', 'Personas']];
 const showField = k => !pref('cardOff', []).includes(k);
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;

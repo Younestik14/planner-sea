@@ -352,13 +352,13 @@ function nowClassHTML(){
 function timetableHTML(){
   const T = S.ttEdit ? S.ttDraft : S.settings?.timetable, O = isOwner();
   if (!T) return `<div class="page">${emptyState('clock', 'Aún no hay horario', O ? '' : 'Cuando el propietario lo ponga, aparecerá aquí.')}</div>`;
-  const E = S.ttEdit, wd = new Date().getDay(), { now } = ttNow(), td = today();
+  const E = S.ttEdit, wd = new Date().getDay(), { now, brk } = ttNow(), td = today();
   const mon = (() => { const d = new Date(); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return isoOf(d); })();
   const codes = Object.keys(T.subjects);
   const cell = (dia, i) => { const c = T.grid[dia]?.[i], s = T.subjects[c];
     if (E) return `<td><select onchange="S.ttDraft.grid[${dia}][${i}]=this.value||null;render()"><option value="">— libre —</option>${codes.map(k => `<option value="${k}" ${k === c ? 'selected' : ''}>${esc(T.subjects[k].short)}</option>`).join('')}</select></td>`;
-    return `<td class="${dia === wd && now?.i === i ? 'now' : ''}">${s ? `<div class="tt-c" style="--c:${s.color}" title="${esc(s.name)}"><b>${esc(s.short)}</b><small>${ic('user', 'sm')} ${esc(s.teacher || '—')}</small><small>${ic('map-pin', 'sm')} ${esc(s.room || '—')}</small></div>` : ''}</td>`; };
-  const rows = T.slots.map(([a, b], i) => `${i === T.breakAfter && T.break ? `<tr class="tt-brk"><th>${T.break.join('–')}</th><td colspan="5">Descanso</td></tr>` : ''}
+    return `<td class="${dia === wd && now?.i === i ? 'now' : dia === wd ? 'today' : ''}">${s ? `<div class="tt-c" style="--c:${s.color}" title="${esc(s.name)}">${dia === wd && now?.i === i ? '<span class="tt-now">AHORA</span>' : ''}<b>${esc(s.short)}</b><small>${ic('user', 'sm')} ${esc(s.teacher || '—')}</small><small>${ic('map-pin', 'sm')} ${esc(s.room || '—')}</small></div>` : ''}</td>`; };
+  const rows = T.slots.map(([a, b], i) => `${i === T.breakAfter && T.break ? `<tr class="tt-brk ${brk && wd >= 1 && wd <= 5 ? 'now' : ''}"><th>${T.break.join('–')}</th><td colspan="5">${brk && wd >= 1 && wd <= 5 ? '☕ Descanso · ahora' : 'Descanso'}</td></tr>` : ''}
     <tr><th>${E ? `<input value="${a}" onchange="S.ttDraft.slots[${i}][0]=this.value"><input value="${b}" onchange="S.ttDraft.slots[${i}][1]=this.value">` : `${a}<br><small>${b}</small>`}</th>${[1, 2, 3, 4, 5].map(d => cell(d, i)).join('')}</tr>`).join('');
   const head = [1, 2, 3, 4, 5].map(d => { const k = addDays(mon, d - 1), ex = S.exams.filter(e => e.exam_date === k);
     return `<th class="${d === wd ? 'today' : ''}">${DAYS5[d - 1]}<small> ${new Date(k + 'T00:00').getDate()}</small>${ex.map(e => `<div class="tt-ex" onclick="editExam('${e.id}')">${ic('graduation-cap', 'sm')} ${esc(e.title)}</div>`).join('')}</th>`; }).join('');
@@ -400,3 +400,6 @@ function modulesHTML(T){
       ${ex.map(e => `<a href="#" class="bad-t" onclick="event.preventDefault();editExam('${e.id}')">${ic('graduation-cap', 'sm')} ${esc(e.title)} <span class="mut">· ${fmtD(e.exam_date)}</span></a>`).join('')}
       ${!ps.length && !ex.length ? '<small class="mut">Sin proyectos ni exámenes</small>' : ''}</div>`; }).join('')}</div>`;
 }
+
+// el resaltado de la clase actual avanza solo mientras se mira el horario
+setInterval(() => { if (S.view === 'timetable' && !S.ttEdit && !S.modal && !document.hidden) render(); }, 60000);

@@ -373,7 +373,6 @@ const NOTIF_GROUPS = [
   ['assign', 'Asignaciones', 'Cuando te asignan o quitan una tarea'], ['changes', 'Cambios en tus tareas', 'Estado, fecha límite y tareas desbloqueadas'],
   ['diary', 'Diario', 'Publicaciones nuevas en los diarios'], ['review', 'Revisiones', 'Cuando alguien termina su parte (admins)'],
   ['deadlines', 'Plazos', 'Tareas que vencen hoy o mañana y entregas de proyecto'], ['email', 'Correo 3 días antes', 'Email a tu Gmail con las tareas que vencen en 3 días'],
-  ['mailnow', 'Correo con avisos importantes', 'Asignaciones, cambios en tus tareas, menciones, diario, anuncios y exámenes que no hayas visto en la web'],
 ];
 function profileHTML(){
   const me = S.me, st = me.avatar_style || 'google', off = me.notif_off || [];
@@ -396,7 +395,7 @@ function profileHTML(){
     <div class="pick">${['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899','#a855f7','#84cc16','#f97316','#64748b'].map(k => `<label class="${me.color === k ? 'on' : ''}" style="padding:3px" title="${k}"><input type="radio" name="pfc" ${me.color === k ? 'checked' : ''} onchange="saveProfile({color:'${k}'})"><span class="av" style="background:${k};margin:0"></span></label>`).join('')}</div>
     <label>Avisos que quieres recibir</label>
     <div class="card-box" style="padding:4px 12px;box-shadow:none">${NOTIF_GROUPS.map(([k, n, d]) => { const mode = off.includes(k) ? 'off' : (me.notif_digest || []).includes(k) ? 'digest' : 'now';
-      return `<div class="toggle"><span class="grow"><b>${n}</b><small>${d}</small></span><div class="seg">${(k === 'email' || k === 'mailnow' ? [['now', 'Sí'], ['off', 'No']] : [['now', 'Al momento'], ['digest', 'Resumen 19:00'], ['off', 'No']]).map(([v, l]) => `<button class="${mode === v ? 'on' : ''}" onclick="setNotifMode('${k}','${v}')">${l}</button>`).join('')}</div></div>`; }).join('')}</div>
+      return `<div class="toggle"><span class="grow"><b>${n}</b><small>${d}</small></span><div class="seg">${(k === 'email' ? [['now', 'Sí'], ['off', 'No']] : [['now', 'Al momento'], ['digest', 'Resumen 19:00'], ['off', 'No']]).map(([v, l]) => `<button class="${mode === v ? 'on' : ''}" onclick="setNotifMode('${k}','${v}')">${l}</button>`).join('')}</div></div>`; }).join('')}</div>
     <p class="small mut">«Resumen 19:00»: esos avisos se guardan y te llegan todos juntos a las 19:00, con un aviso que los resume. Los de acceso y cambios de rol llegan siempre.</p>
     <label>Color principal de la web</label>
     <div class="row" style="flex-wrap:wrap;gap:8px">${Object.entries(ACCENTS).map(([k, [n, c]]) => `<button class="btn ${pref('accent', 'indigo') === k ? 'pri' : ''}" style="${pref('accent', 'indigo') === k ? `background:${c};border-color:${c}` : ''}" onclick="setPref('accent','${k}')"><span class="av" style="background:${c};margin:0;width:14px;height:14px;border:0"></span>${n}</button>`).join('')}</div>

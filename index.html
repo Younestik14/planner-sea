@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="app.css">
-<script>try { const t = JSON.parse(localStorage.getItem('psea.theme')); if (t) document.documentElement.dataset.theme = t; } catch {}</script>
+<script>try { const g = k => JSON.parse(localStorage.getItem('psea.' + k)), r = document.documentElement; if (g('theme')) r.dataset.theme = g('theme'); if (g('accent')) r.dataset.accent = g('accent'); if (g('contrast')) r.dataset.contrast = 'high'; } catch {}</script>
 </head>
 <body>
 <div id="app"><div class="center"><div class="boxc"><div class="skel" style="height:64px;width:64px;margin:0 auto 14px;border-radius:16px"></div><div class="skel" style="height:22px;width:60%;margin:0 auto 10px"></div><div class="skel" style="height:14px;width:80%;margin:0 auto"></div></div></div></div>

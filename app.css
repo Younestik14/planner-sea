@@ -372,3 +372,20 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
 }
 @media(hover:none){.qa{display:flex;position:static;margin-top:6px;width:max-content}.mact{display:inline-flex}}
 @media print{header.top,aside.side,.tabs,.bottomnav{display:none}}
+
+/* ---- fotos del chat ---- */
+.cimgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-top:6px}
+.cimgs img,.cimgs .skel{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:zoom-in;display:block}
+.chat.drop{outline:2px dashed var(--acc);outline-offset:-4px;border-radius:10px;background:var(--acc-bg)}
+/* ---- perfil ---- */
+.avopt{display:flex;flex-direction:column;align-items:center;gap:6px;margin:0;padding:10px;border:1px solid var(--line);border-radius:12px;cursor:pointer;min-width:110px;color:var(--txt)}
+.avopt.on{border-color:var(--acc);background:var(--acc-bg)}
+.avopt input{display:none}
+.toggle{display:flex;align-items:center;gap:12px;margin:0;padding:10px 0;border-bottom:1px solid var(--line);color:var(--txt);cursor:pointer}
+.toggle:last-child{border:0}
+.toggle small{display:block;color:var(--mut);font-weight:400}
+.toggle input{display:none}
+.toggle i{width:36px;height:20px;border-radius:10px;background:var(--line2);position:relative;flex:none;transition:background .15s}
+.toggle i::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s}
+.toggle input:checked+i{background:var(--acc)}
+.toggle input:checked+i::after{transform:translateX(16px)}

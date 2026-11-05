@@ -16,12 +16,12 @@ const PRANK = { urgente:0, importante:1, media:2, baja:3 };
 const STATUS = { no_iniciada:'No iniciada', en_curso:'En curso', completada:'Completada' };
 const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899','#a855f7','#84cc16'];
 const PVIEWS = [['board','Tablero','square-kanban'],['gantt','Cronograma','gantt-chart'],['cal','Calendario','calendar-days'],['diary','Diario','megaphone'],
-                ['team','Equipo','users'],['files','Archivos','folder'],['hist','Historial','history']];
+                ['team','Equipo','users'],['files','Archivos','folder'],['hist','Historial','history'],['trash','Papelera','trash-2']];
 const REACT_POST = ['👍','✅','👀','❤️','🎉'], REACT_MSG = ['👍','✅','👀'];
 
 const S = { user:null, me:null, profiles:[], projects:[], padmins:[], notifs:[], mine:[], reads:{}, recent:[], review:[], weekMin:0,
   pid:null, tid:null, view:'home', uid:null, person:null,
-  buckets:[], tasks:[], activity:[], deps:[], tlogs:[], posts:[], preacts:[], votes:[],
+  buckets:[], tasks:[], trash:[], activity:[], deps:[], tlogs:[], posts:[], preacts:[], votes:[], cdraft:[],
   comments:[], tact:[], subs:[], reacts:[],
   onlyMine:false, label:'', cal:null, found:null, sel:new Set(), selMode:false, pop:null, reply:null, hidden:new Set(),
   sort: ls('sort') || 'manual', compact: !!ls('compact'), panel:null, modal:null, seen:null, urls:{},
@@ -43,6 +43,7 @@ const proj = (id = S.pid) => S.projects.find(p => p.id === id);
 const hue = s => [...s].reduce((a, c) => a + c.charCodeAt(0) * 7, 0) % 360;
 const lblHTML = l => `<span class="lbl" style="--h:${hue(l)}">${esc(l)}</span>`;
 const folderId = u => (u || '').match(/folders\/([\w-]+)/)?.[1] || (u || '').match(/[?&]id=([\w-]+)/)?.[1];
+const newId = () => crypto.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2);
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -62,9 +63,10 @@ function ago(ts){
 }
 function av(id, cls = ''){
   const p = prof(id), n = pname(id);
-  if (p?.avatar_url) return `<img class="av ${cls}" src="${esc(p.avatar_url)}" title="${esc(n)}" alt="" referrerpolicy="no-referrer">`;
+  const st = p?.avatar_style || 'google', url = st === 'photo' ? p.photo_url : st === 'google' ? p?.avatar_url : null;
+  if (url) return `<img class="av ${cls}" src="${esc(url)}" title="${esc(n)}" alt="" referrerpolicy="no-referrer">`;
   const ini = n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
-  return `<span class="av ${cls}" style="background:hsl(${hue(id || 'x')} 55% 45%)" title="${esc(n)}">${esc(ini)}</span>`;
+  return `<span class="av ${cls}" style="background:${p?.color ? esc(p.color) : `hsl(${hue(id || 'x')} 55% 45%)`}" title="${esc(n)}">${esc(ini)}</span>`;
 }
 function dueChip(t){
   if (!t.due_date) return '';
@@ -193,16 +195,18 @@ async function loadBase(){
   const monday = (() => { const d = new Date(); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return isoOf(d); })();
   const [profiles, projects, notifs, mine, reads, padmins, recent, review, week] = await Promise.all([
     q(sb.from('profiles').select('*')),
-    q(sb.from('projects').select('*, tasks(status)').order('created_at')),
+    q(sb.from('projects').select('*, tasks(status,deleted_at)').order('created_at')),
     q(sb.from('notifications').select('*').order('created_at', { ascending:false }).limit(80)),
-    q(sb.from('tasks').select('id,title,status,priority,due_date,start_date,project_id,review_requested,labels,task_assignees!inner(user_id)').eq('task_assignees.user_id', S.me.id)),
+    q(sb.from('tasks').select('id,title,status,priority,due_date,start_date,project_id,review_requested,labels,task_assignees!inner(user_id)').eq('task_assignees.user_id', S.me.id).is('deleted_at', null)),
     q(sb.from('task_reads').select('task_id,read_at')),
     q(sb.from('project_admins').select('*')),
     q(sb.from('posts').select('id,project_id,user_id,body,images,poll_options,pinned,created_at').order('created_at', { ascending:false }).limit(6)),
-    q(sb.from('tasks').select('id,title,project_id').eq('review_requested', true).neq('status', 'completada')),
+    q(sb.from('tasks').select('id,title,project_id').eq('review_requested', true).neq('status', 'completada').is('deleted_at', null)),
     q(sb.from('time_logs').select('minutes').eq('user_id', S.me.id).gte('logged_on', monday)),
   ]);
+  projects.forEach(p => p.tasks = p.tasks.filter(t => !t.deleted_at));
   Object.assign(S, { profiles, projects, mine, padmins, recent, review });
+  S.me = profiles.find(p => p.id === S.me.id) || S.me;
   S.weekMin = week.reduce((a, r) => a + r.minutes, 0);
   S.reads = Object.fromEntries(reads.map(r => [r.task_id, r.read_at]));
   const fresh = S.seen ? notifs.filter(n => !n.read && !S.seen.has(n.id)) : [];
@@ -227,8 +231,8 @@ async function loadProject(){
     pids.length ? q(sb.from('post_reactions').select('*').in('post_id', pids)) : [],
     pids.length ? q(sb.from('post_votes').select('*').in('post_id', pids)) : [],
   ]);
-  Object.assign(S, { buckets:b, tasks:t, activity:a, posts, deps, tlogs, preacts, votes });
-  await signImages(posts.flatMap(p => p.images));
+  Object.assign(S, { buckets:b, tasks: t.filter(x => !x.deleted_at), trash: t.filter(x => x.deleted_at), activity:a, posts, deps, tlogs, preacts, votes });
+  await signImages('diario', posts.flatMap(p => p.images));
 }
 async function loadTask(){
   if (S.tid && !S.tasks.some(t => t.id === S.tid)) { S.tid = null; if (S.modal === 'task') S.modal = null; }
@@ -240,6 +244,7 @@ async function loadTask(){
   ]);
   S.comments = c; S.tact = a; S.subs = st;
   S.reacts = c.length ? await q(sb.from('comment_reactions').select('*').in('comment_id', c.map(x => x.id))) : [];
+  await signImages('chat', c.flatMap(x => x.images || []));
   // task_reads no está en tiempo real, así que marcar como leído no provoca bucles
   const now = new Date().toISOString(); S.reads[S.tid] = now;
   sb.from('task_reads').upsert({ user_id: S.me.id, task_id: S.tid, read_at: now }).then(() => {});
@@ -247,18 +252,19 @@ async function loadTask(){
 async function loadPerson(){
   if (!prof(S.uid)) { S.view = 'home'; return; }
   const [tasks, logs, msgs] = await Promise.all([
-    q(sb.from('tasks').select('id,title,status,priority,due_date,project_id,task_assignees!inner(user_id)').eq('task_assignees.user_id', S.uid)),
+    q(sb.from('tasks').select('id,title,status,priority,due_date,project_id,task_assignees!inner(user_id)').eq('task_assignees.user_id', S.uid).is('deleted_at', null)),
     q(sb.from('time_logs').select('minutes,logged_on,task_id').eq('user_id', S.uid)),
     sb.from('comments').select('id', { count:'exact', head:true }).eq('user_id', S.uid),
   ]);
   S.person = { tasks, minutes: logs.reduce((a, r) => a + r.minutes, 0), msgs: msgs.count || 0 };
 }
-// Fotos del diario: el bucket es privado, así que pedimos enlaces firmados (1 h) y los guardamos
-async function signImages(paths){
-  const need = [...new Set(paths)].filter(p => !S.urls[p] || Date.now() - S.urls[p].t > 45 * 60e3);
+// Fotos del diario y del chat: los buckets son privados, así que pedimos enlaces firmados (1 h) y los guardamos
+const imgUrl = (bucket, path) => S.urls[bucket + ':' + path]?.u;
+async function signImages(bucket, paths){
+  const need = [...new Set(paths)].filter(p => { const c = S.urls[bucket + ':' + p]; return !c || Date.now() - c.t > 45 * 60e3; });
   if (!need.length) return;
-  const { data } = await sb.storage.from('diario').createSignedUrls(need, 3600);
-  (data || []).forEach(d => { if (d.signedUrl) S.urls[d.path] = { u: d.signedUrl, t: Date.now() }; });
+  const { data } = await sb.storage.from(bucket).createSignedUrls(need, 3600);
+  (data || []).forEach(d => { if (d.signedUrl) S.urls[bucket + ':' + d.path] = { u: d.signedUrl, t: Date.now() }; });
 }
 
 // Tiempo real: cualquier cambio en la base de datos refresca lo que estás viendo
@@ -352,7 +358,7 @@ function menuHTML(){
     ${isOwner() ? '<div style="padding:0 10px 6px"><span class="badge own">Propietario</span></div>' : ''}
     <hr>
     <button onclick="go('person',{uid:S.me.id});S.panel=null">${ic('user')} Mi perfil</button>
-    <button onclick="renameMe()">${ic('pencil')} Cambiar mi nombre</button>
+    <button onclick="openModal('profile')">${ic('user-cog')} Editar perfil y avisos</button>
     ${isOwner() ? `<button onclick="openModal('members')">${ic('users')} Miembros y permisos</button>` : ''}
     <button onclick="setTheme('${light ? 'dark' : 'light'}')">${ic(light ? 'moon' : 'sun')} Modo ${light ? 'oscuro' : 'claro'}</button>
     <button onclick="ls('sound', ls('sound') === false);render()">${ic(ls('sound') === false ? 'volume-x' : 'volume-2')} Sonido ${ls('sound') === false ? 'desactivado' : 'activado'}</button>
@@ -388,7 +394,7 @@ function mainHTML(){
   if (S.view === 'person') return personHTML();
   const p = proj();
   if (!p) return emptyState('folder-kanban', 'No hay proyectos todavía', canCreate() ? 'Crea el primero con el botón + del menú.' : 'Cuando se cree uno, aparecerá aquí.');
-  const view = { board: boardHTML, gantt: ganttHTML, cal: calHTML, diary: diaryHTML, team: teamHTML, files: filesHTML }[S.view];
+  const view = { board: boardHTML, gantt: ganttHTML, cal: calHTML, diary: diaryHTML, team: teamHTML, files: filesHTML, trash: trashHTML }[S.view];
   return projectHeaderHTML(p) + (view ? view() : `<div class="hist">${histHTML(S.activity, true)}</div>`);
 }
 const emptyState = (icon, title, text = '') => `<div class="empty-state">${ic(icon)}<h3>${title}</h3><p>${text}</p></div>`;
@@ -417,7 +423,7 @@ function projectHeaderHTML(p){
     ${pin && S.view !== 'diary' ? `<div class="pinned" onclick="go('diary')">${ic('pin')}<div class="grow"><b>${esc(first(pin.user_id))}:</b> ${esc((pin.body || (pin.poll_options ? 'Encuesta' : 'Fotos')).slice(0, 160))}</div><span class="small mut">Ver diario →</span></div>` : ''}
   </div>
   <div class="tabs" style="--c:${esc(p.color)}">
-    ${PVIEWS.map(([k, n, i]) => `<button class="tab ${S.view === k ? 'on' : ''}" onclick="go('${k}')">${ic(i)} ${n}</button>`).join('')}
+    ${PVIEWS.filter(v => v[0] !== 'trash' || E).map(([k, n, i]) => `<button class="tab ${S.view === k ? 'on' : ''}" onclick="go('${k}')">${ic(i)} ${n}${k === 'trash' && S.trash.length ? ` <span class="cnt">${S.trash.length}</span>` : ''}</button>`).join('')}
     <div class="sp"></div>
     ${S.view === 'board' ? boardToolsHTML() : ''}
   </div>`;
@@ -498,7 +504,9 @@ function personHTML(){
   return `<div class="page" style="max-width:900px">
     <div class="card-box prof" style="padding:20px">${av(u.id, 'xl')}<div class="grow"><h1>${esc(pname(u.id))}</h1><div class="mut">${esc(u.email)}</div>
       <div class="row" style="margin-top:8px;flex-wrap:wrap">${u.is_admin ? '<span class="badge own">Propietario</span>' : ''}${adm.map(p => `<span class="badge">Admin · ${esc(p.name)}</span>`).join('')}${!u.is_admin && !adm.length ? '<span class="chip">Miembro</span>' : ''}</div></div>
-      ${isOwner() && u.id !== S.me.id ? `<button class="btn" onclick="openModal('members')">${ic('shield')} Permisos</button>` : ''}</div>
+      <div class="row" style="flex-wrap:wrap">${u.id === S.me.id ? `<button class="btn" onclick="openModal('profile')">${ic('user-cog')} Editar perfil</button>` : ''}
+        ${isOwner() ? `<button class="btn" onclick="exportPersonReport('${u.id}')" title="Solo lo ves tú">${ic('file-text')} Informe</button>` : ''}
+        ${isOwner() && u.id !== S.me.id ? `<button class="btn" onclick="openModal('members')">${ic('shield')} Permisos</button>` : ''}</div></div>
     <div class="kpis">
       <div class="card-box kpi"><b>${P.tasks.length}</b><span>Tareas asignadas</span></div>
       <div class="card-box kpi"><b style="color:var(--ok-t)">${done}</b><span>Completadas</span></div>
@@ -654,7 +662,7 @@ function diaryHTML(){
   </div>`;
 }
 function postHTML(p){
-  const imgs = p.images.map(x => S.urls[x]?.u).filter(Boolean), M = canManagePost(p);
+  const imgs = p.images.map(x => imgUrl('diario', x)).filter(Boolean), M = canManagePost(p);
   const votes = S.votes.filter(v => v.post_id === p.id), mine = votes.find(v => v.user_id === S.me.id);
   return `<article class="card-box post ${p.pinned ? 'pin' : ''}">
     <div class="hd">${av(p.user_id, 'l')}<div class="grow"><div class="row" style="gap:6px"><b>${esc(pname(p.user_id))}</b>${roleBadge(p.user_id, p.project_id)}</div>
@@ -698,7 +706,7 @@ async function publishPost(){
   try {
     const paths = [];
     for (const im of D.images) {
-      const path = `${S.pid}/${crypto.randomUUID()}.jpg`;
+      const path = `${S.pid}/${newId()}.jpg`;
       const { error } = await sb.storage.from('diario').upload(path, im.blob, { contentType: 'image/jpeg' });
       if (error) throw error;
       paths.push(path);
@@ -767,7 +775,9 @@ function actText(a){
   const d = a.details || {}, t = a.task_title ? `«${esc(a.task_title)}»` : '';
   switch (a.action) {
     case 'task_created': return `creó la tarea ${t}`;
-    case 'task_deleted': return `eliminó la tarea ${t}`;
+    case 'task_deleted': return `eliminó definitivamente la tarea ${t}`;
+    case 'task_trashed': return `envió a la papelera la tarea ${t}`;
+    case 'task_restored': return `restauró de la papelera la tarea ${t}`;
     case 'title_changed': return `renombró «${esc(d.from)}» a «${esc(d.to)}»`;
     case 'status_changed': return `cambió ${t} de ${STATUS[d.from]} a <b>${STATUS[d.to]}</b>`;
     case 'priority_changed': return `cambió la prioridad de ${t} a <b>${PRIO[d.to]?.[0]}</b>`;
@@ -839,7 +849,7 @@ async function readAll(){ S.notifs.forEach(n => n.read = true); render(); await 
 function renderModal(){
   const m = S.modal;
   if (!m) { $('#modal').innerHTML = ''; return; }
-  const html = m === 'task' ? taskHTML() : m === 'members' ? membersHTML() : m === 'summary' ? summaryHTML() : m === 'keys' ? keysHTML()
+  const html = m === 'task' ? taskHTML() : m === 'members' ? membersHTML() : m === 'summary' ? summaryHTML() : m === 'keys' ? keysHTML() : m === 'profile' ? profileHTML()
              : projectFormHTML(m === 'project-edit' ? proj() : null);
   if (!html) { S.modal = null; $('#modal').innerHTML = ''; return; }
   $('#modal').innerHTML = `<div class="ov" onclick="if(event.target===this)closeModal()">${html}</div>`;
@@ -847,7 +857,7 @@ function renderModal(){
   icons();
 }
 function openModal(m){ S.modal = m; S.panel = null; closeSide(); render(); renderModal(); }
-function closeModal(){ S.modal = null; S.tid = null; S.reply = null; typingChannel(null); setHash(); renderModal(); render(); }
+function closeModal(){ S.modal = null; S.tid = null; S.reply = null; S.cdraft = []; typingChannel(null); setHash(); renderModal(); render(); }
 
 function taskHTML(){
   const t = S.tasks.find(x => x.id === S.tid);
@@ -862,7 +872,7 @@ function taskHTML(){
       <button class="ico" title="Tarea anterior (←)" onclick="navTask(-1)">${ic('chevron-left')}</button>
       <button class="ico" title="Tarea siguiente (→)" onclick="navTask(1)">${ic('chevron-right')}</button>
       <button class="btn sm" onclick="copyLink()" title="Para pegarlo en WhatsApp: abre esta tarea directamente">${ic('link', 'sm')} <span class="hide-m">Copiar enlace</span></button>
-      ${E ? `<button class="btn sm" onclick="dupTask()">${ic('copy', 'sm')} <span class="hide-m">Duplicar</span></button><button class="btn sm bad" onclick="delTask()">${ic('trash-2', 'sm')}</button>` : ''}
+      ${E ? `<button class="btn sm" onclick="dupTask()">${ic('copy', 'sm')} <span class="hide-m">Duplicar</span></button><button class="btn sm bad" onclick="delTask()" title="Enviar a la papelera">${ic('trash-2', 'sm')}</button>` : ''}
       <button class="ico" onclick="closeModal()" aria-label="Cerrar">${ic('x')}</button></div>
     <div class="tgrid">
       <div>
@@ -913,26 +923,29 @@ function taskHTML(){
       </div>
       <div>
         <b class="row">${ic('message-square')} Chat de la tarea</b>
-        <div class="chat" id="chatlist">${S.comments.map(c => { const me = c.user_id === S.me.id, rt = S.comments.find(x => x.id === c.reply_to);
-          const canEdit = me && c.kind !== 'ready' && Date.now() - new Date(c.created_at) < 300000;
+        <div class="chat" id="chatlist" ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="event.preventDefault();this.classList.remove('drop');addChatImages(event.dataTransfer.files)">${S.comments.map(c => { const me = c.user_id === S.me.id, rt = S.comments.find(x => x.id === c.reply_to);
+          const canEdit = me && c.kind !== 'ready' && c.body && Date.now() - new Date(c.created_at) < 300000;
           return `<div class="msg ${me ? 'me' : ''} ${c.kind === 'ready' ? 'ready' : ''}">${av(c.user_id)}
           <div class="bd"><b>${esc(pname(c.user_id))}</b> ${roleBadge(c.user_id, t.project_id)} <small class="mut">${ago(c.created_at)}${c.edited_at ? ' · editado' : ''}</small>
           <span class="mact"><button class="ico" title="Responder" onclick="setReply('${c.id}')">${ic('reply', 'sm')}</button>
             ${canEdit ? `<button class="ico" title="Editar (5 min)" onclick="editComment('${c.id}')">${ic('pencil', 'sm')}</button>` : ''}
             ${E ? `<button class="ico" title="Borrar mensaje" onclick="delComment('${c.id}')">${ic('trash-2', 'sm')}</button>` : ''}</span>
-          ${rt ? `<div class="quote">↩ <b>${esc(pname(rt.user_id))}</b>: ${esc(rt.body.slice(0, 90))}</div>` : c.reply_to ? '<div class="quote">↩ Mensaje borrado</div>' : ''}
+          ${rt ? `<div class="quote">↩ <b>${esc(pname(rt.user_id))}</b>: ${esc(rt.body.slice(0, 90) || '📷 Foto')}</div>` : c.reply_to ? '<div class="quote">↩ Mensaje borrado</div>' : ''}
           ${c.body ? `<p>${mentionify(c)}</p>` : ''}
+          ${(c.images || []).length ? `<div class="cimgs">${c.images.map(x => imgUrl('chat', x) ? `<img src="${esc(imgUrl('chat', x))}" alt="Foto" loading="lazy" onclick="lightbox(this.src)">` : `<span class="skel"></span>`).join('')}</div>` : ''}
           ${(c.links || []).filter(okUrl).map(u => `<a class="lk" href="${esc(u)}" target="_blank" rel="noopener">${ic(/drive\.google|docs\.google/.test(u) ? 'folder' : 'link', 'sm')} ${esc(u.replace(/^https?:\/\//, '').slice(0, 45))}</a>`).join('')}
           <div class="reacts">${REACT_MSG.map(em => { const rs = S.reacts.filter(r => r.comment_id === c.id && r.emoji === em), mi = rs.some(r => r.user_id === S.me.id);
             return `<button class="${mi ? 'on' : ''} ${rs.length ? 'has' : ''}" title="${esc(rs.map(r => pname(r.user_id)).join(', '))}" onclick="react('${c.id}','${em}',${mi})">${em}${rs.length ? ' ' + rs.length : ''}</button>`; }).join('')}</div>
           </div></div>`; }).join('') || emptyState('message-square', 'Sin mensajes', '¡Escribe el primero!')}</div>
         <div id="typing" class="mut small" style="min-height:18px"></div>
         <div class="comp">
-          ${S.reply ? (rc => rc ? `<div class="quote row">↩ Respondiendo a <b>${esc(pname(rc.user_id))}</b>: <span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(rc.body)}</span><button class="ico" onclick="S.reply=null;keep(renderModal)">${ic('x', 'sm')}</button></div>` : '')(S.comments.find(x => x.id === S.reply)) : ''}
+          ${S.reply ? (rc => rc ? `<div class="quote row">↩ Respondiendo a <b>${esc(pname(rc.user_id))}</b>: <span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(rc.body || '📷 Foto')}</span><button class="ico" onclick="S.reply=null;keep(renderModal)">${ic('x', 'sm')}</button></div>` : '')(S.comments.find(x => x.id === S.reply)) : ''}
+          ${S.cdraft.length ? `<div class="thumbs" style="margin:0 0 8px">${S.cdraft.map((im, i) => `<div><img src="${im.url}" alt=""><button onclick="S.cdraft.splice(${i},1);keep(renderModal)" aria-label="Quitar foto">${ic('x', 'sm')}</button></div>`).join('')}</div>` : ''}
           <div id="mbox"></div>
-          <textarea id="cbody" placeholder="Escribe un mensaje… Usa @ para mencionar. Los enlaces de Drive se adjuntan solos." oninput="mentionInput(this);sendTyping()"
+          <textarea id="cbody" placeholder="Escribe un mensaje… Usa @ para mencionar. Los enlaces de Drive se adjuntan solos." oninput="mentionInput(this);sendTyping()" onpaste="pasteChatImages(event)"
             onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();const f=$('#mbox button');f?f.onmousedown(event):sendComment()}"></textarea>
-          <div class="r"><small class="mut hide-m">Enter enviar · Shift+Enter nueva línea · @ mencionar</small><span class="grow"></span><button class="btn pri" onclick="sendComment()">${ic('send', 'sm')} Enviar</button></div>
+          <div class="r"><label class="ico" style="margin:0" title="Adjuntar fotos (también puedes arrastrarlas o pegarlas)">${ic('image')}<input type="file" accept="image/*" multiple hidden onchange="addChatImages(this.files)"></label>
+            <small class="mut hide-m">Enter enviar · Shift+Enter nueva línea · @ mencionar · arrastra o pega fotos</small><span class="grow"></span><button class="btn pri" ${S.busy ? 'disabled' : ''} onclick="sendComment()">${ic('send', 'sm')} ${S.busy ? 'Enviando…' : 'Enviar'}</button></div>
         </div>
       </div>
     </div></div>`;
@@ -991,6 +1004,72 @@ function summaryHTML(){
       ${ev.length > 12 ? `<p class="mut small">…y ${ev.length - 12} más en el Historial de cada proyecto.</p>` : ''}</div>
     <button class="btn pri" style="margin-top:14px;width:100%;justify-content:center" onclick="closeModal()">Entendido</button></div></div>`;
 }
+const NOTIF_GROUPS = [
+  ['chat', 'Mensajes del chat', 'Comentarios y respuestas en tus tareas'], ['mention', 'Menciones', 'Cuando alguien te nombra con @'],
+  ['assign', 'Asignaciones', 'Cuando te asignan o quitan una tarea'], ['changes', 'Cambios en tus tareas', 'Estado, fecha límite y tareas desbloqueadas'],
+  ['diary', 'Diario', 'Publicaciones nuevas en los diarios'], ['review', 'Revisiones', 'Cuando alguien termina su parte (admins)'],
+  ['deadlines', 'Plazos', 'Tareas que vencen hoy o mañana y entregas de proyecto'], ['email', 'Correo 3 días antes', 'Email a tu Gmail con las tareas que vencen en 3 días'],
+];
+function profileHTML(){
+  const me = S.me, st = me.avatar_style || 'google', off = me.notif_off || [];
+  const opt = (k, label, html) => `<label class="avopt ${st === k ? 'on' : ''}"><input type="radio" name="avs" ${st === k ? 'checked' : ''} onchange="saveProfile({avatar_style:'${k}'})">${html}<span>${label}</span></label>`;
+  return `<div class="mod md"><div class="mh"><h3>Editar perfil y avisos</h3><button class="ico" onclick="closeModal()">${ic('x')}</button></div><div class="mb">
+    <label>Nombre y apellidos</label>
+    <div class="row"><input id="pf-name" value="${esc(me.full_name)}"><button class="btn" onclick="saveName2()">Guardar</button></div>
+    <label>Foto de perfil</label>
+    <div class="row" style="flex-wrap:wrap;gap:10px">
+      ${me.avatar_url ? opt('google', 'Foto de Google', `<img class="av xl" src="${esc(me.avatar_url)}" alt="" referrerpolicy="no-referrer">`) : ''}
+      ${opt('photo', me.photo_url ? 'Mi foto' : 'Subir foto', me.photo_url ? `<img class="av xl" src="${esc(me.photo_url)}" alt="">` : `<span class="av xl" style="background:var(--panel2);color:var(--mut)">${ic('upload', 'lg')}</span>`)}
+      ${opt('initials', 'Iniciales', `<span class="av xl" style="background:${esc(me.color || `hsl(${hue(me.id)} 55% 45%)`)}">${esc(pname(me.id).split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase())}</span>`)}
+    </div>
+    <div class="row" style="margin-top:10px;flex-wrap:wrap">
+      <label class="btn" style="margin:0">${ic('upload')} ${me.photo_url ? 'Cambiar foto' : 'Subir foto'}<input type="file" accept="image/*" hidden onchange="uploadAvatar(this.files[0])"></label>
+      ${me.photo_url ? `<button class="btn ghost bad" onclick="removeAvatar()">${ic('trash-2')} Quitar mi foto</button>` : ''}
+      ${S.busy ? '<span class="mut small">Subiendo…</span>' : ''}
+    </div>
+    <label>Color (para las iniciales)</label>
+    <div class="pick">${['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899','#a855f7','#84cc16','#f97316','#64748b'].map(k => `<label class="${me.color === k ? 'on' : ''}" style="padding:3px" title="${k}"><input type="radio" name="pfc" ${me.color === k ? 'checked' : ''} onchange="saveProfile({color:'${k}'})"><span class="av" style="background:${k};margin:0"></span></label>`).join('')}</div>
+    <label>Avisos que quieres recibir</label>
+    <div class="card-box" style="padding:4px 12px;box-shadow:none">${NOTIF_GROUPS.map(([k, n, d]) => `<label class="toggle"><span class="grow"><b>${n}</b><small>${d}</small></span>
+      <input type="checkbox" ${off.includes(k) ? '' : 'checked'} onchange="toggleNotif('${k}',this.checked)"><i></i></label>`).join('')}</div>
+    <p class="small mut">Los avisos de acceso y de cambios de rol te llegan siempre. El sonido se cambia en tu menú.</p>
+  </div></div>`;
+}
+async function saveProfile(patch){ Object.assign(S.me, patch); keep(renderModal); render(); await q(sb.from('profiles').update(patch).eq('id', S.me.id)); }
+async function saveName2(){
+  const v = $('#pf-name').value.trim();
+  if (v.split(/\s+/).length < 2) return toast('Pon al menos nombre y un apellido', 'err');
+  await saveProfile({ full_name: v }); toast('Nombre guardado');
+}
+function toggleNotif(k, on){
+  const off = new Set(S.me.notif_off || []); on ? off.delete(k) : off.add(k);
+  saveProfile({ notif_off: [...off] });
+}
+const avatarPath = url => (url || '').split('/storage/v1/object/public/avatars/')[1];
+async function uploadAvatar(file){
+  if (!file) return;
+  S.busy = true; keep(renderModal);
+  try {
+    const img = await createImageBitmap(file), side = Math.min(img.width, img.height);
+    const c = document.createElement('canvas'); c.width = c.height = 400; // recorte cuadrado centrado
+    c.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 400, 400);
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+    const path = `${S.me.id}/${newId()}.jpg`;
+    const { error } = await sb.storage.from('avatars').upload(path, blob, { contentType: 'image/jpeg' });
+    if (error) throw error;
+    const old = avatarPath(S.me.photo_url);
+    await saveProfile({ photo_url: sb.storage.from('avatars').getPublicUrl(path).data.publicUrl, avatar_style: 'photo' });
+    if (old) sb.storage.from('avatars').remove([old]).then(() => {});
+    toast('Foto actualizada');
+  } catch (e) { toast('No se pudo subir la foto: ' + (e.message || e), 'err'); }
+  S.busy = false; keep(renderModal);
+}
+async function removeAvatar(){
+  const old = avatarPath(S.me.photo_url);
+  await saveProfile({ photo_url: null, avatar_style: S.me.avatar_url ? 'google' : 'initials' });
+  if (old) sb.storage.from('avatars').remove([old]).then(() => {});
+}
+
 function keysHTML(){
   const k = [['/', 'Buscar'], ['H', 'Inicio'], ['M', 'Mis tareas'], ['1 … 7', 'Pestañas del proyecto (Tablero, Cronograma, Calendario, Diario, Equipo, Archivos, Historial)'],
              ['N', 'Nueva tarea en la primera columna (admins)'], ['← →', 'Tarea anterior / siguiente (con una tarea abierta)'], ['Esc', 'Cerrar']];
@@ -1021,14 +1100,10 @@ function togglePanel(p){ S.panel = S.panel === p ? null : p; closeSide(); render
 
 /* ============ acciones: tareas ============ */
 async function openTask(id){
-  if (S.tid !== id) S.reply = null;
+  if (S.tid !== id) { S.reply = null; S.cdraft = []; }
   if (!S.tasks.some(t => t.id === id)) return;
   S.tid = id; S.modal = 'task'; S.comments = []; S.tact = []; S.subs = []; S.reacts = []; setHash(); renderModal();
   typingChannel(id); await loadTask(); keep(renderModal); render();
-}
-async function renameMe(){
-  const v = prompt('Tu nombre y apellidos:', S.me.full_name); if (!v?.trim()) return;
-  await q(sb.from('profiles').update({ full_name: v.trim() }).eq('id', S.me.id));
 }
 async function saveProject(edit){
   const name = $('#p-name').value.trim(), drive = $('#p-drive').value.trim();
@@ -1125,9 +1200,8 @@ async function bulk(kind, val){
   if (kind === 'patch') await q(sb.from('tasks').update(val).in('id', ids));
   else if (kind === 'assign') await q(sb.from('task_assignees').upsert(ids.map(id => ({ task_id: id, user_id: val })), { ignoreDuplicates: true }));
   else if (kind === 'delete') {
-    if (!confirm(`¿Eliminar ${ids.length} tareas?`)) return;
-    ids.forEach(id => S.hidden.add(id)); S.sel.clear(); render();
-    return toastUndo(`${ids.length} tareas eliminadas`, () => { ids.forEach(id => S.hidden.delete(id)); render(); }, () => q(sb.from('tasks').delete().in('id', ids)));
+    S.sel.clear();
+    return trashTasks(ids, `${ids.length} tareas enviadas a la papelera`);
   }
   toast(`${ids.length} tareas actualizadas`);
 }
@@ -1144,8 +1218,36 @@ function saveDates(patch){
 function saveDrive(v){ v = v.trim(); if (v && !okUrl(v)) return toast('El enlace debe empezar por https://', 'err'); saveTask({ drive_url: v || null }); }
 async function delTask(){
   const id = S.tid, t = S.tasks.find(x => x.id === id);
-  closeModal(); S.hidden.add(id); render();
-  toastUndo(`Tarea «${t.title}» eliminada`, () => { S.hidden.delete(id); render(); }, () => q(sb.from('tasks').delete().eq('id', id)));
+  closeModal(); await trashTasks([id], `«${t.title}» enviada a la papelera`);
+}
+async function trashTasks(ids, msg){
+  ids.forEach(id => S.hidden.add(id)); render();
+  await q(sb.from('tasks').update({ deleted_at: new Date().toISOString() }).in('id', ids));
+  toastUndo(msg, () => restoreTasks(ids));
+}
+async function restoreTasks(ids){
+  await q(sb.from('tasks').update({ deleted_at: null }).in('id', ids));
+  ids.forEach(id => S.hidden.delete(id)); toast(ids.length > 1 ? `${ids.length} tareas restauradas` : 'Tarea restaurada');
+}
+async function purgeTasks(ids){
+  if (!confirm(ids.length > 1 ? `¿Eliminar DEFINITIVAMENTE ${ids.length} tareas? Se borran también sus chats, subtareas y horas.` : '¿Eliminar DEFINITIVAMENTE esta tarea? Se borran también su chat, subtareas y horas.')) return;
+  const imgs = (await q(sb.from('comments').select('images').in('task_id', ids))).flatMap(c => c.images || []);
+  await q(sb.from('tasks').delete().in('id', ids));
+  if (imgs.length) sb.storage.from('chat').remove(imgs).then(() => {});
+  toast('Eliminado definitivamente');
+}
+function trashHTML(){
+  if (!adminOf()) return emptyState('lock', 'Solo para admins', 'La papelera solo la ven los admins del proyecto.');
+  const list = [...S.trash].sort((a, b) => b.deleted_at.localeCompare(a.deleted_at));
+  if (!list.length) return emptyState('trash-2', 'La papelera está vacía', 'Las tareas borradas se guardan aquí 30 días antes de eliminarse solas.');
+  return `<div class="page" style="max-width:900px">
+    <div class="row" style="margin-bottom:10px"><p class="mut small grow" style="margin:0">Las tareas se eliminan solas 30 días después de borrarlas. Al restaurarlas vuelven con su chat, subtareas y horas.</p>
+      <button class="btn bad" onclick="purgeTasks(${esc(JSON.stringify(list.map(t => t.id)))})">${ic('trash-2')} Vaciar papelera</button></div>
+    <div class="card-box" style="padding:6px">${list.map(t => { const left = 30 - Math.floor((Date.now() - new Date(t.deleted_at)) / 864e5);
+      return `<div class="mrow" style="cursor:default;--p:${PRIO[t.priority][1]}"><span class="prio"></span><div class="t"><b>${esc(t.title)}</b>
+        <small class="mut">Borrada por ${esc(pname(t.deleted_by))} · ${ago(t.deleted_at)} · se elimina en ${Math.max(left, 0)} día${left === 1 ? '' : 's'}</small></div>
+        <button class="btn sm" onclick="restoreTasks(['${t.id}'])">${ic('undo-2', 'sm')} Restaurar</button>
+        <button class="btn sm bad" onclick="purgeTasks(['${t.id}'])">${ic('x', 'sm')} Eliminar</button></div>`; }).join('')}</div></div>`;
 }
 async function dupTask(){
   const t = S.tasks.find(x => x.id === S.tid);
@@ -1188,12 +1290,36 @@ async function logTime(){
 
 /* ============ acciones: chat ============ */
 async function sendComment(){
-  const el = $('#cbody'), body = el.value.trim(); if (!body) return;
+  const el = $('#cbody'), body = el.value.trim(), pics = S.cdraft; if ((!body && !pics.length) || S.busy) return;
   const links = [...new Set(body.match(/https?:\/\/[^\s<>"']+/g) || [])];
   const mentions = members().filter(p => body.includes('@' + pname(p.id))).map(p => p.id);
-  const reply_to = S.reply; S.reply = null;
+  const reply_to = S.reply, tid = S.tid; S.reply = null; S.cdraft = [];
   el.value = ''; $('#mbox').innerHTML = '';
-  try { await q(sb.from('comments').insert({ task_id: S.tid, body, links, mentions, reply_to })); } catch { el.value = body; S.reply = reply_to; }
+  if (pics.length) { S.busy = true; keep(renderModal); }
+  try {
+    const images = [];
+    for (const im of pics) {
+      const path = `${tid}/${newId()}.jpg`;
+      const { error } = await sb.storage.from('chat').upload(path, im.blob, { contentType: 'image/jpeg' });
+      if (error) throw error;
+      images.push(path);
+    }
+    await q(sb.from('comments').insert({ task_id: tid, body, links, mentions, reply_to, images }));
+    pics.forEach(im => URL.revokeObjectURL(im.url));
+  } catch (e) { toast('No se pudo enviar: ' + (e.message || e), 'err'); if ($('#cbody')) $('#cbody').value = body; S.reply = reply_to; S.cdraft = pics; }
+  S.busy = false; if (S.modal === 'task') keep(renderModal);
+}
+async function addChatImages(files){
+  for (const f of [...files].filter(f => f.type.startsWith('image/'))) {
+    if (S.cdraft.length >= 4) { toast('Máximo 4 fotos por mensaje', 'err'); break; }
+    try { const blob = await compress(f); S.cdraft.push({ blob, url: URL.createObjectURL(blob) }); }
+    catch { toast(`No se pudo leer «${f.name}». Prueba con JPG o PNG.`, 'err'); }
+  }
+  keep(renderModal);
+}
+function pasteChatImages(e){
+  const files = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
+  if (files.length) { e.preventDefault(); addChatImages(files); }
 }
 async function sendReady(){
   if (!confirm('¿Avisar a los admins de que has terminado tu parte de esta tarea?')) return;
@@ -1258,13 +1384,13 @@ async function doSearch(v){
   v = v.replace(/[,()%*\\]/g, ' ').trim();
   if (v.length < 2) { S.found = null; if (S.panel === 'search') S.panel = null; return keep(render); }
   const [ts, cs] = await Promise.all([
-    q(sb.from('tasks').select('id,title,project_id').or(`title.ilike.%${v}%,description.ilike.%${v}%`).limit(15)),
-    q(sb.from('comments').select('body,task_id,user_id,tasks(title,project_id)').ilike('body', `%${v}%`).order('created_at', { ascending:false }).limit(15)),
+    q(sb.from('tasks').select('id,title,project_id').or(`title.ilike.%${v}%,description.ilike.%${v}%`).is('deleted_at', null).limit(15)),
+    q(sb.from('comments').select('body,task_id,user_id,tasks(title,project_id,deleted_at)').ilike('body', `%${v}%`).order('created_at', { ascending:false }).limit(15)),
   ]);
   const pn = id => proj(id)?.name || '';
   S.found = { q: v, items: [
     ...ts.map(t => ({ p: t.project_id, t: t.id, icon: '📋', title: t.title, sub: pn(t.project_id) })),
-    ...cs.filter(c => c.tasks).map(c => ({ p: c.tasks.project_id, t: c.task_id, icon: '💬', title: c.body.slice(0, 80), sub: `${pname(c.user_id)} en «${c.tasks.title}» · ${pn(c.tasks.project_id)}` })),
+    ...cs.filter(c => c.tasks && !c.tasks.deleted_at).map(c => ({ p: c.tasks.project_id, t: c.task_id, icon: '💬', title: c.body.slice(0, 80), sub: `${pname(c.user_id)} en «${c.tasks.title}» · ${pn(c.tasks.project_id)}` })),
   ] };
   S.panel = 'search'; keep(render);
 }
@@ -1299,6 +1425,52 @@ async function exportReport(){
     <h2>Diario del proyecto</h2>${S.posts.length ? `<table><tr><th style="width:130px">Fecha</th><th style="width:150px">Autor</th><th>Publicación</th></tr>${[...S.posts].reverse().map(x => `<tr><td>${new Date(x.created_at).toLocaleString('es-ES', { dateStyle:'short', timeStyle:'short' })}</td><td>${esc(pname(x.user_id))}</td><td>${esc(x.body)}${x.poll_options ? `<br><span class="m">Encuesta: ${x.poll_options.map((o, i) => `${esc(o)} (${S.votes.filter(v => v.post_id === x.id && v.option === i).length})`).join(' · ')}</span>` : ''}${x.images.length ? `<br><span class="m">${x.images.length} foto(s)</span>` : ''}</td></tr>`).join('')}</table>` : '<p class="m">Sin publicaciones.</p>'}
     <h2>Historial completo</h2><table><tr><th style="width:130px">Fecha</th><th style="width:150px">Persona</th><th>Acción</th></tr>
     ${act.map(a => `<tr><td>${new Date(a.created_at).toLocaleString('es-ES', { dateStyle:'short', timeStyle:'short' })}</td><td>${esc(pname(a.actor_id))}</td><td>${actText(a).replace(/<i data-lucide[^>]*><\/i>/g, '')}</td></tr>`).join('')}</table>
+    </body></html>`);
+  w.document.close();
+}
+async function exportPersonReport(uid){
+  if (!isOwner()) return;
+  const w = window.open('', '_blank');
+  if (!w) return toast('Permite las ventanas emergentes para generar el informe', 'err');
+  w.document.write('<p style="font:14px system-ui;padding:20px">Preparando el informe…</p>');
+  const u = prof(uid);
+  const [tasks, logs, coms, subs, posts] = await Promise.all([
+    q(sb.from('tasks').select('id,title,status,priority,start_date,due_date,completed_at,project_id,task_assignees!inner(user_id)').eq('task_assignees.user_id', uid).is('deleted_at', null)),
+    q(sb.from('time_logs').select('minutes,logged_on,note,task_id,tasks(title,project_id)').eq('user_id', uid).order('logged_on')),
+    q(sb.from('comments').select('created_at,kind,tasks(project_id)').eq('user_id', uid)),
+    q(sb.from('subtasks').select('done,tasks(project_id)').eq('created_by', uid)),
+    q(sb.from('posts').select('project_id').eq('user_id', uid)),
+  ]);
+  const onTime = t => t.status === 'completada' && t.due_date && t.completed_at && t.completed_at.slice(0, 10) <= t.due_date;
+  const lateDone = t => t.status === 'completada' && t.due_date && t.completed_at && t.completed_at.slice(0, 10) > t.due_date;
+  const overdue = t => t.status !== 'completada' && t.due_date && daysLeft(t.due_date) < 0;
+  const pids = [...new Set([...tasks.map(t => t.project_id), ...logs.map(l => l.tasks?.project_id), ...coms.map(c => c.tasks?.project_id)].filter(Boolean))];
+  const per = pids.map(pid => { const ts = tasks.filter(t => t.project_id === pid);
+    return { p: proj(pid), n: ts.length, done: ts.filter(t => t.status === 'completada').length, ok: ts.filter(onTime).length, late: ts.filter(lateDone).length, over: ts.filter(overdue).length,
+      mins: logs.filter(l => l.tasks?.project_id === pid).reduce((a, l) => a + l.minutes, 0), msgs: coms.filter(c => c.tasks?.project_id === pid && c.kind === 'msg').length,
+      ready: coms.filter(c => c.tasks?.project_id === pid && c.kind === 'ready').length, subs: subs.filter(x => x.tasks?.project_id === pid).length,
+      admin: S.padmins.some(a => a.project_id === pid && a.user_id === uid) }; });
+  const tot = k => per.reduce((a, x) => a + x[k], 0), done = tasks.filter(t => t.status === 'completada').length;
+  const punct = tasks.filter(t => t.status === 'completada' && t.due_date).length ? Math.round(tasks.filter(onTime).length / tasks.filter(t => t.status === 'completada' && t.due_date).length * 100) + '%' : '—';
+  const pn = id => esc(proj(id)?.name || '—'), logo = new URL('logo-full.png', location.href).href;
+  w.document.open();
+  w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe – ${esc(pname(uid))}</title><style>
+    body{font:12px/1.45 Inter,system-ui,Segoe UI,Roboto,sans-serif;color:#111;margin:28px}h1{margin:0;font-size:22px}h2{font-size:14px;margin:22px 0 8px;border-bottom:2px solid #f39200;padding-bottom:4px}
+    table{width:100%;border-collapse:collapse}th,td{border:1px solid #d5d8de;padding:5px 7px;text-align:left;vertical-align:top}th{background:#f1f2f5}.m{color:#666}.ok{color:#15803d}.bad{color:#b91c1c}
+    .hd{display:flex;align-items:center;gap:14px}.hd img{height:48px}
+    .k{display:flex;gap:12px;margin-top:12px;flex-wrap:wrap}.k div{border:1px solid #ddd;border-radius:8px;padding:8px 14px}.k b{font-size:18px;display:block}
+    @media print{button{display:none}}</style></head><body>
+    <button onclick="print()" style="float:right;padding:8px 14px">Guardar como PDF</button>
+    <div class="hd"><img src="${logo}" onerror="this.remove()"><div><h1>${esc(pname(uid))}</h1><div class="m">${esc(u?.email)} · ${SCHOOL}</div><div class="m">Informe individual generado el ${new Date().toLocaleString('es-ES')} · Documento interno</div></div></div>
+    <div class="k"><div><b>${tasks.length}</b>tareas asignadas</div><div><b>${done}</b>completadas</div><div><b>${punct}</b>entregadas a tiempo</div><div><b>${tasks.filter(overdue).length}</b>vencidas sin terminar</div>
+      <div><b>${fmtMin(logs.reduce((a, l) => a + l.minutes, 0))}</b>horas apuntadas</div><div><b>${coms.filter(c => c.kind === 'msg').length}</b>mensajes</div><div><b>${subs.length}</b>subtareas creadas</div><div><b>${posts.length}</b>publicaciones en diarios</div></div>
+    <h2>Resumen por proyecto</h2><table><tr><th>Proyecto</th><th>Rol</th><th>Tareas</th><th>Completadas</th><th>A tiempo</th><th>Tarde</th><th>Vencidas</th><th>Horas</th><th>Mensajes</th><th>"Terminé mi parte"</th><th>Subtareas</th></tr>
+    ${per.map(x => `<tr><td>${esc(x.p?.name || '—')}${x.p?.archived ? ' <span class="m">(archivado)</span>' : ''}</td><td>${x.admin ? 'Admin' : u?.is_admin ? 'Propietario' : 'Miembro'}</td><td>${x.n}</td><td>${x.done}</td><td class="ok">${x.ok}</td><td class="bad">${x.late}</td><td class="bad">${x.over}</td><td>${fmtMin(x.mins)}</td><td>${x.msgs}</td><td>${x.ready}</td><td>${x.subs}</td></tr>`).join('') || '<tr><td colspan="11" class="m">Sin actividad en proyectos.</td></tr>'}
+    ${per.length > 1 ? `<tr style="font-weight:600"><td>Total</td><td></td><td>${tot('n')}</td><td>${tot('done')}</td><td>${tot('ok')}</td><td>${tot('late')}</td><td>${tot('over')}</td><td>${fmtMin(tot('mins'))}</td><td>${tot('msgs')}</td><td>${tot('ready')}</td><td>${tot('subs')}</td></tr>` : ''}</table>
+    <h2>Tareas</h2><table><tr><th>Tarea</th><th>Proyecto</th><th>Estado</th><th>Inicio</th><th>Límite</th><th>Completada</th><th>Cumplimiento</th></tr>
+    ${[...tasks].sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999')).map(t => `<tr><td>${esc(t.title)}</td><td>${pn(t.project_id)}</td><td>${STATUS[t.status]}</td><td>${t.start_date ? fmtD(t.start_date) : '—'}</td><td>${t.due_date ? fmtD(t.due_date) : '—'}</td>
+      <td>${t.completed_at ? new Date(t.completed_at).toLocaleDateString('es-ES') : '—'}</td><td>${onTime(t) ? '<span class="ok">A tiempo</span>' : lateDone(t) ? '<span class="bad">Tarde</span>' : overdue(t) ? '<span class="bad">Vencida</span>' : '—'}</td></tr>`).join('') || '<tr><td colspan="7" class="m">Sin tareas asignadas.</td></tr>'}</table>
+    <h2>Horas apuntadas</h2>${logs.length ? `<table><tr><th>Fecha</th><th>Tarea</th><th>Proyecto</th><th>Tiempo</th><th>Nota</th></tr>${logs.map(l => `<tr><td>${new Date(l.logged_on + 'T00:00').toLocaleDateString('es-ES')}</td><td>${esc(l.tasks?.title || '—')}</td><td>${pn(l.tasks?.project_id)}</td><td>${fmtMin(l.minutes)}</td><td>${esc(l.note || '')}</td></tr>`).join('')}</table>` : '<p class="m">No ha apuntado horas.</p>'}
     </body></html>`);
   w.document.close();
 }

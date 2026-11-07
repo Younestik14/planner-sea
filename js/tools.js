@@ -199,16 +199,17 @@ function weekHTML(){
   let cells = '';
   for (let i = 0; i < 42; i++) {
     const d = new Date(start); d.setDate(start.getDate() + i); const k = isoOf(d);
-    const ex = exams.filter(e => e.exam_date === k), en = ents.filter(p => p.due_date === k);
-    cells += `<div class="dc ${d.getMonth() !== m ? 'out' : ''} ${k === td ? 'today' : ''}" ${O ? `ondblclick="if(event.target===this){S.examDay='${k}';editExam()}"` : ''}><div class="dn">${d.getDate()}</div>
+    const ex = exams.filter(e => e.exam_date === k), en = ents.filter(p => p.due_date === k), my = S.pitems.filter(x => x.kind === 'event' && x.day === k);
+    cells += `<div class="dc dc-click ${d.getMonth() !== m ? 'out' : ''} ${k === td ? 'today' : ''}" onclick="openDay('${k}')" title="Ver el día"><div class="dn">${d.getDate()}</div>
       ${ex.map(examChip).join('')}
-      ${en.map(p => `<button class="ct ce" style="--p:${p.color || 'var(--acc)'}" title="Entrega: ${esc(p.name)}${modOf(p.module) ? ' · ' + esc(modOf(p.module).short) : ''}" onclick="goProject('${p.id}')">${ic('flag', 'sm')} ${esc(p.name)}</button>`).join('')}</div>`;
+      ${en.map(p => `<button class="ct ce" style="--p:${p.color || 'var(--acc)'}" title="Entrega: ${esc(p.name)}${modOf(p.module) ? ' · ' + esc(modOf(p.module).short) : ''}" onclick="event.stopPropagation();goProject('${p.id}')">${ic('flag', 'sm')} ${esc(p.name)}</button>`).join('')}
+      ${my.map(x => `<span class="ct cp" title="Privado: solo lo ves tú">${ic('lock', 'sm')} ${x.at_time ? x.at_time + ' ' : ''}${esc(x.title)}</span>`).join('')}</div>`;
   }
   const mv = k => `S.ccal=new Date(${y},${m + k},1);render()`;
-  const next = [...exams.filter(e => e.exam_date >= td).map(e => ({ d: e.exam_date, t: 'Examen', n: e.title })), ...ents.filter(p => p.due_date >= td).map(p => ({ d: p.due_date, t: 'Entrega', n: p.name }))].sort((a, b) => a.d.localeCompare(b.d)).slice(0, 4);
+  const next = [...exams.filter(e => e.exam_date >= td).map(e => ({ d: e.exam_date, t: e.kind === 'event' ? 'Fecha' : 'Examen', n: e.title })), ...ents.filter(p => p.due_date >= td).map(p => ({ d: p.due_date, t: 'Entrega', n: p.name }))].sort((a, b) => a.d.localeCompare(b.d)).slice(0, 4);
   return `<div class="page" style="max-width:none"><div class="row" style="flex-wrap:wrap;margin-bottom:6px"><h1 class="grow" style="margin:0">Calendario de clase</h1>
-      ${O ? `<button class="btn pri" onclick="S.examDay=null;editExam()">${ic('graduation-cap')} Añadir examen</button>` : ''}</div>
-    <p class="mut" style="margin-top:0">Exámenes ${ic('graduation-cap', 'sm')} y entregas de proyectos ${ic('flag', 'sm')} de toda la clase.${O ? ' Doble clic en un día para poner un examen ese día.' : ''}</p>
+      ${O ? `<button class="btn pri" onclick="S.examDay=null;S.dayK=null;editExam()">${ic('calendar-plus')} Añadir fecha para todos</button>` : ''}</div>
+    <p class="mut" style="margin-top:0">Exámenes ${ic('graduation-cap', 'sm')}, fechas ${ic('calendar', 'sm')} y entregas ${ic('flag', 'sm')} de toda la clase, más tus cosas privadas ${ic('lock', 'sm')}. <b>Pulsa un día</b> para añadir tus cosas o tu plan de ese día.</p>
     ${next.length ? `<div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:14px">${next.map(x => `<span class="chip" style="${x.t === 'Examen' ? 'color:var(--bad-t);background:var(--bad-bg)' : ''}"><b>${x.t}</b>&nbsp;${esc(x.n)} · ${fmtD(x.d)}${x.d === td ? ' (hoy)' : ''}</span>`).join('')}</div>` : ''}
     <div class="row" style="margin-bottom:12px">
       <button class="btn" onclick="${mv(-1)}" aria-label="Mes anterior">${ic('chevron-left')}</button><button class="btn" onclick="S.ccal=null;render()">Hoy</button><button class="btn" onclick="${mv(1)}" aria-label="Mes siguiente">${ic('chevron-right')}</button>
@@ -300,38 +301,40 @@ function usageHTML(){
 }
 
 /* ============ Exámenes (calendario de la clase; solo los crea el propietario) ============ */
-const examChip = e => `<button class="ct cx" ${modOf(e.module) ? `style="--p:${modOf(e.module).color}"` : ''} title="Examen: ${esc(e.title)}${modOf(e.module) ? ' · ' + esc(modOf(e.module).short) : ''}${e.notes ? ' · ' + esc(e.notes) : ''}" onclick="editExam('${e.id}')">${ic('graduation-cap', 'sm')} ${esc(e.title)}</button>`;
+const examChip = e => `<button class="ct ${e.kind === 'event' ? 'cv' : 'cx'}" ${modOf(e.module) ? `style="--p:${modOf(e.module).color}"` : ''} title="${e.kind === 'event' ? 'Fecha' : 'Examen'}: ${esc(e.title)}${modOf(e.module) ? ' · ' + esc(modOf(e.module).short) : ''}${e.notes ? ' · ' + esc(e.notes) : ''}" onclick="event.stopPropagation();S.dayK=null;editExam('${e.id}')">${ic(e.kind === 'event' ? 'calendar' : 'graduation-cap', 'sm')} ${esc(e.title)}</button>`;
 const modOf = k => k && S.settings?.timetable?.subjects?.[k];
 const modChip = k => modOf(k) ? `<span class="chip" style="border-left:3px solid ${modOf(k).color}" title="${esc(modOf(k).name)}">${esc(modOf(k).short)}</span>` : '';
 const modSelect = (id, v) => `<select id="${id}"><option value="">— Sin módulo —</option>${Object.entries(S.settings?.timetable?.subjects || {}).map(([k, m]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${esc(m.short)}</option>`).join('')}</select>`;
 function editExam(id){ S.examId = id || null; if (id) S.examDay = null; openModal('exam'); }
 function examFormHTML(){
   const e = S.exams.find(x => x.id === S.examId), O = isOwner();
-  if (e && !O) return `<div class="mod sm"><div class="mh"><h3>Examen</h3><button class="ico" onclick="closeModal()">${ic('x')}</button></div><div class="mb">
+  const ev = (e?.kind || S.examKind) === 'event';
+  if (e && !O) return `<div class="mod sm"><div class="mh"><h3>${ev ? 'Fecha' : 'Examen'}</h3><button class="ico" onclick="closeModal()">${ic('x')}</button></div><div class="mb">
     <p><b>${esc(e.title)}</b> ${modChip(e.module)}<br><span class="mut">${cap(new Date(e.exam_date + 'T00:00').toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' }))}</span></p>
-    ${e.notes ? `<p>${linkify(e.notes)}</p>` : ''}<div class="row"><span class="grow"></span><button class="btn" onclick="closeModal()">Cerrar</button></div></div></div>`;
+    ${e.notes ? `<p>${linkify(e.notes)}</p>` : ''}<div class="row"><span class="grow"></span><button class="btn" onclick="backToDay()">Cerrar</button></div></div></div>`;
   if (!O) return '';
-  return `<div class="mod sm"><div class="mh"><h3>${e ? 'Editar examen' : 'Nuevo examen'}</h3><button class="ico" onclick="closeModal()">${ic('x')}</button></div><div class="mb">
-    <p class="small mut">Lo verá toda la clase en el Calendario de clase y en el calendario de cada proyecto.</p>
-    <label>Asignatura o examen</label><input id="ex-title" maxlength="120" value="${esc(e?.title || '')}" placeholder="Ej.: Automatismos – tema 4">
+  return `<div class="mod sm"><div class="mh"><h3>${e ? 'Editar fecha para todos' : 'Nueva fecha para todos'}</h3><button class="ico" onclick="closeModal()">${ic('x')}</button></div><div class="mb">
+    <p class="small mut">Lo verá toda la clase en el Calendario de clase y en el calendario de cada proyecto, y les llegará un aviso.</p>
+    <label>Tipo</label><select id="ex-kind"><option value="exam">🎓 Examen</option><option value="event" ${ev ? 'selected' : ''}>📅 Otra fecha (excursión, charla, día sin clase…)</option></select>
+    <label>Título</label><input id="ex-title" maxlength="120" value="${esc(e?.title || '')}" placeholder="Ej.: Automatismos – tema 4">
     <label>Módulo</label>${modSelect('ex-mod', e?.module)}
     <label>Fecha</label><input id="ex-date" type="date" value="${e?.exam_date || S.examDay || today()}">
     <label>Notas (opcional)</label><textarea id="ex-notes" rows="2" maxlength="500" placeholder="Temario, aula, material que hay que llevar…">${esc(e?.notes || '')}</textarea>
     <div class="row" style="margin-top:16px">${e ? `<button class="btn bad" onclick="delExam()">${ic('trash-2', 'sm')} Borrar</button>` : ''}<span class="grow"></span>
-      <button class="btn" onclick="closeModal()">Cancelar</button><button class="btn pri" onclick="saveExam()">Guardar</button></div></div></div>`;
+      <button class="btn" onclick="backToDay()">Cancelar</button><button class="btn pri" onclick="saveExam()">Guardar</button></div></div></div>`;
 }
 async function saveExam(){
-  const row = { title: $('#ex-title').value.trim(), exam_date: $('#ex-date').value, notes: $('#ex-notes').value.trim() || null, module: $('#ex-mod').value || null };
+  const row = { title: $('#ex-title').value.trim(), exam_date: $('#ex-date').value, notes: $('#ex-notes').value.trim() || null, module: $('#ex-mod').value || null, kind: $('#ex-kind').value };
   if (!row.title || !row.exam_date) return toast('Pon el nombre y la fecha del examen');
   const r = S.examId ? await q(sb.from('exams').update(row).eq('id', S.examId).select().single()) : await q(sb.from('exams').insert(row).select().single());
   if (!r) return;
   S.exams = [...S.exams.filter(x => x.id !== r.id), r].sort((a, b) => a.exam_date.localeCompare(b.exam_date));
-  closeModal(); toast('Examen guardado');
+  backToDay(); toast('Guardado');
 }
 async function delExam(){
-  if (!confirm('¿Borrar este examen del calendario?')) return;
+  if (!confirm('¿Borrar esta fecha del calendario?')) return;
   await q(sb.from('exams').delete().eq('id', S.examId));
-  S.exams = S.exams.filter(x => x.id !== S.examId); closeModal(); toast('Examen borrado');
+  S.exams = S.exams.filter(x => x.id !== S.examId); backToDay(); toast('Borrado');
 }
 
 /* ============ Horario de clase (lo ven todos; solo lo edita el propietario) ============ */
@@ -404,3 +407,39 @@ function modulesHTML(T){
 
 // el resaltado de la clase actual avanza solo mientras se mira el horario
 setInterval(() => { if (S.view === 'timetable' && !S.ttEdit && !S.modal && !document.hidden) render(); }, 60000);
+
+/* ============ Día del calendario: fechas de todos + mis cosas privadas + mi plan (solo se ve abriendo el día) ============ */
+const backToDay = () => S.dayK ? openModal('day') : closeModal();
+function openDay(k){ S.dayK = k; openModal('day'); }
+function dayHTML(){
+  const k = S.dayK, O = isOwner(), sh = S.exams.filter(e => e.exam_date === k), en = S.projects.filter(p => p.due_date === k && !p.is_template && !p.archived);
+  const my = kind => S.pitems.filter(x => x.day === k && x.kind === kind).sort((a, b) => kind === 'event' ? (a.at_time || '99').localeCompare(b.at_time || '99') : a.position - b.position);
+  const del = x => `<button class="ico" title="Borrar" onclick="delPItem('${x.id}')">${ic('x', 'sm')}</button>`;
+  return `<div class="mod sm"><div class="mh"><h3>${cap(new Date(k + 'T00:00').toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' }))}</h3><button class="ico" onclick="S.dayK=null;closeModal()">${ic('x')}</button></div><div class="mb">
+    <h4 class="day-h">${ic('users', 'sm')} Para toda la clase</h4>
+    ${sh.map(e => `<button class="day-i" onclick="editExam('${e.id}')">${ic(e.kind === 'event' ? 'calendar' : 'graduation-cap', 'sm')} <b>${e.kind === 'event' ? 'Fecha' : 'Examen'}:</b> ${esc(e.title)} ${modChip(e.module)}</button>`).join('')}
+    ${en.map(p => `<button class="day-i" onclick="S.dayK=null;closeModal();goProject('${p.id}')">${ic('flag', 'sm')} <b>Entrega:</b> ${esc(p.name)}</button>`).join('')}
+    ${!sh.length && !en.length ? '<p class="small mut">Nada para este día.</p>' : ''}
+    ${O ? `<button class="btn sm" onclick="S.examDay='${k}';S.examKind=null;editExam()">${ic('calendar-plus', 'sm')} Añadir fecha para todos</button>` : ''}
+    <h4 class="day-h">${ic('lock', 'sm')} Mis cosas <small class="mut">· privado, sale en tu calendario</small></h4>
+    ${my('event').map(x => `<div class="day-i">${x.at_time ? `<b>${x.at_time}</b>` : ''} <span class="grow">${esc(x.title)}</span>${del(x)}</div>`).join('')}
+    <div class="row"><input id="pi-time" type="time" style="width:110px" aria-label="Hora (opcional)"><input id="pi-event" maxlength="200" placeholder="Añadir… (Enter) Ej.: Dentista, entrenamiento" onkeydown="if(event.key==='Enter')addPItem('event')"></div>
+    <h4 class="day-h">${ic('list-checks', 'sm')} Mi plan del día <small class="mut">· solo lo ves tú y solo aquí</small></h4>
+    ${my('plan').map(x => `<label class="day-i check"><input type="checkbox" ${x.done ? 'checked' : ''} onchange="togglePItem('${x.id}',this.checked)"> <span class="grow ${x.done ? 'done' : ''}">${esc(x.title)}</span>${del(x)}</label>`).join('')}
+    <input id="pi-plan" maxlength="200" placeholder="Añadir al plan… (Enter) Ej.: Terminar memoria apartado 3" onkeydown="if(event.key==='Enter')addPItem('plan')">
+  </div></div>`;
+}
+async function addPItem(kind){
+  const el = $('#pi-' + kind), title = el.value.trim(); if (!title) return;
+  const row = { day: S.dayK, kind, title, position: Date.now(), at_time: kind === 'event' ? $('#pi-time').value || null : null };
+  const r = await q(sb.from('personal_items').insert(row).select().single()); if (!r) return;
+  S.pitems.push(r); renderModal(); render(); $('#pi-' + kind)?.focus();
+}
+async function togglePItem(id, done){
+  const x = S.pitems.find(i => i.id === id); x.done = done; renderModal();
+  await q(sb.from('personal_items').update({ done }).eq('id', id));
+}
+async function delPItem(id){
+  S.pitems = S.pitems.filter(i => i.id !== id); renderModal(); render();
+  await q(sb.from('personal_items').delete().eq('id', id));
+}

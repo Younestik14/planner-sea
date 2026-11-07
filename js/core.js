@@ -24,7 +24,7 @@ const REACT_POST = ['👍','✅','👀','❤️','🎉'], REACT_MSG = ['👍','�
 const S = { user:null, me:null, profiles:[], projects:[], padmins:[], notifs:[], mine:[], reads:{}, recent:[], review:[], weekMin:0,
   pid:null, tid:null, view:'home', uid:null, person:null,
   buckets:[], tasks:[], trash:[], activity:[], deps:[], tlogs:[], posts:[], preacts:[], votes:[], cdraft:[], tvotes:[], wiki:[], wid:null, wedit:null, revs:null, act84:[],
-  listSort:{ k:'due', d:1 }, listQ:'', qr:false, rsvps:[], materials:[], meetings:[], exams:[], priv:'',
+  listSort:{ k:'due', d:1 }, listQ:'', qr:false, rsvps:[], materials:[], meetings:[], exams:[], pitems:[], priv:'',
   comments:[], tact:[], subs:[], reacts:[],
   onlyMine:false, label:'', cal:null, found:null, sel:new Set(), selMode:false, pop:null, reply:null, hidden:new Set(),
   sort: ls('sort') || 'manual', compact: !!ls('compact'), panel:null, modal:null, seen:null, urls:{},
@@ -210,7 +210,7 @@ async function buildSummary(){
 /* ============ datos ============ */
 async function loadBase(){
   const monday = (() => { const d = new Date(); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return isoOf(d); })();
-  const [profiles, projects, , mine, reads, padmins, recent, review, week, settings, meetings, exams] = await Promise.all([
+  const [profiles, projects, , mine, reads, padmins, recent, review, week, settings, meetings, exams, pitems] = await Promise.all([
     q(sb.from('profiles').select('*')),
     q(sb.from('projects').select('*, tasks(status,deleted_at)').order('created_at')),
     loadNotifs(),
@@ -223,8 +223,9 @@ async function loadBase(){
     q(sb.from('app_settings').select('*').maybeSingle()),
     q(sb.from('posts').select('id,project_id,meeting_at,place').eq('kind', 'meeting').gte('meeting_at', new Date(Date.now() - 864e5 * 8).toISOString()).order('meeting_at').limit(40)),
     q(sb.from('exams').select('*').order('exam_date')),
+    q(sb.from('personal_items').select('*').order('position')),
   ]);
-  S.meetings = meetings; S.exams = exams;
+  S.meetings = meetings; S.exams = exams; S.pitems = pitems || [];
   S.settings = settings || {};
   projects.forEach(p => p.tasks = p.tasks.filter(t => !t.deleted_at));
   Object.assign(S, { profiles, projects, mine, padmins, recent, review });

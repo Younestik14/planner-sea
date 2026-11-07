@@ -641,3 +641,12 @@ body.present .layout{min-height:100vh}
 .mods{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
 .mod-c{border-left:4px solid var(--c);display:flex;flex-direction:column;gap:4px;padding:12px 14px}
 .mod-c a{font-size:13px;display:block;color:var(--txt)}.mod-c a.bad-t{color:var(--bad-t)}
+
+/* día del calendario y cosas privadas */
+.dc-click{cursor:pointer}.dc-click:hover{background:var(--panel2)}
+.cal .ct.cv{font-weight:600;display:flex;gap:4px;align-items:center;color:var(--acc2,var(--acc));background:var(--acc-bg)}
+.cal .ct.cp{display:flex;gap:4px;align-items:center;background:transparent;border:1px dashed var(--line2,var(--line));color:var(--txt2);border-left-width:1px}
+.day-h{margin:16px 0 6px;font-size:13px;display:flex;gap:6px;align-items:center}
+.day-i{display:flex;gap:8px;align-items:center;width:100%;text-align:left;padding:7px 10px;border-radius:8px;background:var(--panel2);margin-bottom:5px;border:0;color:var(--txt);font:inherit}
+button.day-i{cursor:pointer}.day-i.check{cursor:pointer}.day-i .done{text-decoration:line-through;color:var(--mut)}
+.day-i.check{margin:0 0 5px;font-size:inherit;font-weight:400;color:var(--txt)}.day-i.check input{width:auto;flex:none;margin:0}.day-i .grow{flex:1}

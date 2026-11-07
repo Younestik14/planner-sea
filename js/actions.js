@@ -13,10 +13,11 @@ async function saveProject(edit){
   if (drive && !okUrl(drive)) return toast('El enlace de Drive debe empezar por https://', 'err');
   const row = { name, description: $('#p-desc').value.trim() || null, drive_url: drive || null, color: document.querySelector('input[name=pc]:checked').value,
                 due_date: $('#p-due').value || null, is_template: $('#p-tpl').checked, emoji: $('#p-emoji').value.trim() || null, module: $('#p-mod').value || null };
+  if (S.coverDraft !== undefined) row.cover = S.coverDraft;
   if (edit) { row.archived = $('#p-arch').checked; await q(sb.from('projects').update(row).eq('id', S.pid)); closeModal(); return; }
   let id;
   if ($('#p-from')?.value) { id = await q(sb.rpc('duplicate_project', { p_src: $('#p-from').value, p_name: name, p_template: row.is_template })); await q(sb.from('projects').update(row).eq('id', id)); }
-  else id = (await q(sb.from('projects').insert(row).select()))[0].id;
+  else { id = (await q(sb.from('projects').insert(row).select()))[0].id; if ($('#p-preset')?.value) await applyPreset(id, $('#p-preset').value); }
   S.modal = null; await loadBase(); goProject(id);
 }
 async function saveAsTemplate(){
@@ -235,7 +236,7 @@ async function sendComment(){
   const el = $('#cbody'), body = el.value.trim(), pics = S.cdraft; if ((!body && !pics.length) || S.busy) return;
   const links = [...new Set(body.match(/https?:\/\/[^\s<>"']+/g) || [])];
   const mentions = members().filter(p => body.includes('@' + pname(p.id))).map(p => p.id);
-  const reply_to = S.reply, tid = S.tid; S.reply = null; S.cdraft = [];
+  const reply_to = S.reply, tid = S.tid; S.reply = null; S.cdraft = []; chatDraft(tid, null);
   el.value = ''; $('#mbox').innerHTML = '';
   if (pics.length) { S.busy = true; keep(renderModal); }
   try {
@@ -248,7 +249,7 @@ async function sendComment(){
     }
     await q(sb.from('comments').insert({ task_id: tid, body, links, mentions, reply_to, images }));
     pics.forEach(im => URL.revokeObjectURL(im.url));
-  } catch (e) { toast('No se pudo enviar: ' + (e.message || e), 'err'); if ($('#cbody')) $('#cbody').value = body; S.reply = reply_to; S.cdraft = pics; }
+  } catch (e) { toast('No se pudo enviar: ' + (e.message || e), 'err'); if ($('#cbody')) $('#cbody').value = body; chatDraft(tid, body); S.reply = reply_to; S.cdraft = pics; }
   S.busy = false; if (S.modal === 'task') keep(renderModal);
 }
 async function addChatImages(files){

@@ -17,14 +17,14 @@ const PRANK = { urgente:0, importante:1, media:2, baja:3 };
 const STATUS = { no_iniciada:'No iniciada', en_curso:'En curso', completada:'Completada' };
 const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899','#a855f7','#84cc16'];
 const PVIEWS = [['board','Tablero','square-kanban'],['list','Lista','list'],['gantt','Cronograma','gantt-chart'],['cal','Calendario','calendar-days'],['diary','Diario','megaphone'],
-                ['wiki','Notas','notebook-pen'],['material','Material','package'],['team','Equipo','users'],['stats','Estadísticas','chart-line'],['files','Archivos','folder'],['hist','Historial','history'],['trash','Papelera','trash-2']];
+                ['wiki','Notas','notebook-pen'],['material','Material','package'],['deliv','Entregables','package-check'],['team','Equipo','users'],['stats','Estadísticas','chart-line'],['files','Archivos','folder'],['hist','Historial','history'],['trash','Papelera','trash-2']];
 const QUICK = ['Lo reviso hoy 👀', 'Hecho ✅', 'Subido a Drive 📁', '¿Alguien puede revisarlo?', 'Necesito ayuda con esto 🙋', 'Voy con retraso, lo termino mañana'];
 const REACT_POST = ['👍','✅','👀','❤️','🎉'], REACT_MSG = ['👍','✅','👀'];
 
 const S = { user:null, me:null, profiles:[], projects:[], padmins:[], notifs:[], mine:[], reads:{}, recent:[], review:[], weekMin:0,
   pid:null, tid:null, view:'home', uid:null, person:null,
   buckets:[], tasks:[], trash:[], activity:[], deps:[], tlogs:[], posts:[], preacts:[], votes:[], cdraft:[], tvotes:[], wiki:[], wid:null, wedit:null, revs:null, act84:[],
-  listSort:{ k:'due', d:1 }, listQ:'', qr:false, rsvps:[], materials:[], meetings:[], exams:[], pitems:[], priv:'',
+  listSort:{ k:'due', d:1 }, listQ:'', qr:false, rsvps:[], materials:[], meetings:[], exams:[], pitems:[], priv:'', cposts:[], cvotes:[], creacts:[], notes:[], ndraft:{ title:'', url:'', blob:null, mod:null }, track:[], deliv:[], cweek:null,
   comments:[], tact:[], subs:[], reacts:[],
   onlyMine:false, label:'', cal:null, found:null, sel:new Set(), selMode:false, pop:null, reply:null, hidden:new Set(),
   sort: ls('sort') || 'manual', compact: !!ls('compact'), panel:null, modal:null, seen:null, urls:{},
@@ -190,6 +190,7 @@ async function start(){
   if (S.view === 'compare') await loadCompare();
   if (S.view === 'audit') await loadAudit();
   if (S.view === 'usage') await loadUsage();
+  await loadView();
   await loadTask();
   if (!S.sessionTracked) { S.sessionTracked = true; track('session'); }
   if (!S.summaryDone) await buildSummary();
@@ -217,7 +218,7 @@ async function loadBase(){
     q(sb.from('tasks').select('id,title,status,priority,due_date,start_date,project_id,review_requested,labels,task_assignees!inner(user_id)').eq('task_assignees.user_id', S.me.id).is('deleted_at', null)),
     q(sb.from('task_reads').select('task_id,read_at')),
     q(sb.from('project_admins').select('*')),
-    q(sb.from('posts').select('id,project_id,user_id,body,images,poll_options,pinned,created_at').order('created_at', { ascending:false }).limit(6)),
+    q(sb.from('posts').select('id,project_id,user_id,body,images,poll_options,pinned,created_at').not('project_id', 'is', null).order('created_at', { ascending:false }).limit(6)),
     q(sb.from('tasks').select('id,title,project_id').eq('review_requested', true).neq('status', 'completada').is('deleted_at', null)),
     q(sb.from('time_logs').select('minutes').eq('user_id', S.me.id).gte('logged_on', monday)),
     q(sb.from('app_settings').select('*').maybeSingle()),
@@ -238,7 +239,7 @@ async function loadNotifs(){
   const notifs = await q(sb.from('notifications').select('*').eq('digest', false).order('created_at', { ascending:false }).limit(80));
   const fresh = S.seen ? notifs.filter(n => !n.read && !S.seen.has(n.id)) : [];
   if (fresh.length > 2) toast(`Tienes ${fresh.length} notificaciones nuevas`); else fresh.forEach(n => toast(n.message));
-  if (fresh.length) beep();
+  if (fresh.length) { beep(); browserNotify(fresh); }
   S.seen = new Set(notifs.map(n => n.id));
   S.notifs = notifs;
 }
@@ -254,7 +255,7 @@ async function loadProject(){
   ]);
   const ids = t.map(x => x.id), pids = posts.map(x => x.id);
   const wids = wiki.map(w => w.id);
-  const [deps, tlogs, preacts, votes, tvotes, act84, wcom, materials, rsvps] = await Promise.all([
+  const [deps, tlogs, preacts, votes, tvotes, act84, wcom, materials, rsvps, deliv] = await Promise.all([
     ids.length ? q(sb.from('task_deps').select('*').in('task_id', ids)) : [],
     ids.length ? q(sb.from('time_logs').select('*').in('task_id', ids).order('logged_on', { ascending:false })) : [],
     pids.length ? q(sb.from('post_reactions').select('*').in('post_id', pids)) : [],
@@ -264,8 +265,9 @@ async function loadProject(){
     wids.length ? q(sb.from('wiki_comments').select('*').in('page_id', wids).order('created_at')) : [],
     q(sb.from('materials').select('*').eq('project_id', S.pid).order('position')),
     pids.length ? q(sb.from('meeting_rsvps').select('*').in('post_id', pids)) : [],
+    q(sb.from('deliverables').select('*').eq('project_id', S.pid).order('position')),
   ]);
-  Object.assign(S, { materials, rsvps });
+  Object.assign(S, { materials, rsvps, deliv });
   S.wcom = wcom;
   Object.assign(S, { buckets:b, tasks: t.filter(x => !x.deleted_at), trash: t.filter(x => x.deleted_at), activity:a, posts, deps, tlogs, preacts, votes, tvotes, wiki, act84 });
   if (!wiki.some(w => w.id === S.wid)) S.wid = wiki[0]?.id || null;
@@ -334,7 +336,9 @@ function subscribe(){
     if (t === 'notifications') rtq.notif = true;
     else if (t === 'profiles') { if (r.id === S.me?.id && 'approved' in r && r.approved !== S.me.approved) rtq.full = true; else rtq.base = true; }
     else if (RT_BASE.has(t)) rtq.base = true;
+    else if (t === 'module_notes') rtq.view = true;
     else {
+      if ((t === 'posts' && (!r.project_id || S.cposts.some(p => p.id === r.id))) || ((t === 'post_votes' || t === 'post_reactions') && S.cposts.some(p => p.id === r.post_id))) rtq.view = true;
       if (relProject(t, r)) rtq.project = true;
       if (relTask(t, r)) rtq.task = true;
       if (t === 'tasks' || t === 'task_assignees' || t === 'posts' || t === 'time_logs') rtq.base = true; // Inicio y Mis tareas
@@ -351,6 +355,7 @@ async function flushRealtime(){
   if ((f.task || f.project) && S.tid) await loadTask();
   if (f.compare && S.view === 'compare') await loadCompare();
   if (S.view === 'person' && (f.base || f.project)) await loadPerson();
+  if (f.view || (f.base && S.view === 'track')) await loadView();
   keep(() => { render(); renderModal(); });
 }
 
@@ -379,6 +384,12 @@ function setHash(){
 // Pegar un enlace de tarea con la web ya abierta (setHash usa replaceState y no dispara esto)
 addEventListener('hashchange', () => { if (S.me) start(); });
 const taskLink = (pid, tid) => location.origin + location.pathname + '#' + new URLSearchParams({ v:'board', p: pid, t: tid });
+// vistas de clase y del propietario que cargan sus propios datos
+async function loadView(){
+  if (S.view === 'tablon') await loadClass();
+  if (S.view === 'apuntes' || S.view === 'timetable') await loadNotes();
+  if (S.view === 'track') await loadTrack();
+}
 async function go(view, opts = {}){
   closeSide();
   S.view = view; S.sel.clear(); S.selMode = false; S.pop = null;
@@ -390,6 +401,7 @@ async function go(view, opts = {}){
   if (S.view === 'compare') await loadCompare();
   if (S.view === 'audit') await loadAudit();
   if (S.view === 'usage') await loadUsage();
+  await loadView();
   track('view:' + S.view);
   setHash(); render(); renderModal();
   $('main')?.scrollTo?.(0, 0);

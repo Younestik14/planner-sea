@@ -650,3 +650,46 @@ body.present .layout{min-height:100vh}
 .day-i{display:flex;gap:8px;align-items:center;width:100%;text-align:left;padding:7px 10px;border-radius:8px;background:var(--panel2);margin-bottom:5px;border:0;color:var(--txt);font:inherit}
 button.day-i{cursor:pointer}.day-i.check{cursor:pointer}.day-i .done{text-decoration:line-through;color:var(--mut)}
 .day-i.check{margin:0 0 5px;font-size:inherit;font-weight:400;color:var(--txt)}.day-i.check input{width:auto;flex:none;margin:0}.day-i .grow{flex:1}
+
+/* ---- menú lateral por secciones ---- */
+.side h4:first-of-type{margin-top:14px}
+/* ---- portada del proyecto ---- */
+.ph.has-cover{position:relative;padding:22px 18px;border-radius:14px;margin-bottom:12px;background:var(--cover);color:#fff;isolation:isolate}
+.ph.has-cover::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(90deg,#000a,#0003);z-index:-1}
+.ph.has-cover h2,.ph.has-cover .chip,.ph.has-cover .badge{color:#fff}
+.ph.has-cover .btn{background:#ffffff26;border-color:#ffffff40;color:#fff;backdrop-filter:blur(6px)}
+.ph.has-cover .ico{color:#fff}
+.cov{width:46px;height:30px;border-radius:8px;border:2px solid var(--line);display:inline-grid;place-items:center;cursor:pointer;background:var(--panel2);color:var(--mut)}
+.cov.on{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-bg)}
+/* ---- tablero compacto ---- */
+.compact .card .desc,.compact .card .bar,.compact .card .cover{display:none}
+.compact .col{min-width:240px;width:240px}
+/* ---- calendario: semana y arrastrar ---- */
+.cal .dc.over,.wk-col.over{outline:2px dashed var(--acc);outline-offset:-3px;background:var(--acc-bg)}
+.ct.cp[draggable=true]{cursor:grab}
+.wk{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.wk-col{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px;min-height:340px;display:flex;flex-direction:column;gap:5px;cursor:pointer}
+.wk-col:hover{background:var(--panel2)}
+.wk-col.today{border-color:var(--acc)}
+.wk-h{font-size:13px;margin-bottom:4px}.wk-col.today .wk-h{color:var(--acc)}
+.wk-cls{margin-top:auto;display:flex;flex-direction:column;gap:3px;opacity:.75}
+.wk-cls div{font-size:11px;padding:3px 6px;border-radius:6px;border-left:3px solid var(--c);background:color-mix(in srgb,var(--c) 12%,transparent)}
+.wk-cls small{color:var(--mut);display:block}
+@media (max-width:760px){.wk{grid-template-columns:1fr}.wk-col{min-height:0}}
+/* ---- Inicio: Hoy ---- */
+.today-c{margin:14px 0}.today-c h3{display:flex;gap:8px;align-items:center;margin:0 0 8px}
+.today-c .nowcls{margin:0 0 8px;padding:0;cursor:pointer}
+.today-i{display:flex;gap:7px;align-items:center;padding:6px 8px;border-radius:8px;font-size:14px;cursor:pointer}
+.today-i:hover{background:var(--panel2)}.today-i.bad{color:var(--bad-t)}
+.today-i.check{margin:0;font-weight:400;color:var(--txt)}.today-i.check input{width:auto;margin:0}.today-i .done{text-decoration:line-through;color:var(--mut)}
+/* ---- apuntes ---- */
+.notes{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.note-c{padding:0;overflow:hidden;border-top:4px solid var(--c);display:flex;flex-direction:column;position:relative}
+.note-c img{width:100%;height:150px;object-fit:cover;cursor:zoom-in;display:block}
+.note-ph{height:150px;display:grid;place-items:center;color:var(--mut);background:var(--panel2)}
+.note-b{padding:10px 12px;display:flex;flex-direction:column;gap:3px}
+.note-c>.ico{position:absolute;top:6px;right:6px;background:var(--panel)}
+.mod-c a{margin-top:2px}
+/* ---- material ---- */
+.grip{cursor:grab;color:var(--mut);display:inline-flex}
+.ltable.mat tr.over td{border-top:2px solid var(--acc)}

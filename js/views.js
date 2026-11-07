@@ -12,7 +12,7 @@ function homeHTML(){
   return `<div class="page">
     <h1>${hi}, ${esc(first(S.me.id))} 👋</h1>
     <p class="mut" style="margin:0">${cap(new Date().toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' }))}</p>
-    ${nowClassHTML()}
+    ${todayHTML()}
     ${favsHTML()}
     <div class="kpis">
       <div class="card-box kpi"><b>${open.length}</b><span>Tareas pendientes</span></div>
@@ -235,32 +235,32 @@ function calHTML(){
 }
 
 /* ============ Diario ============ */
-const canManagePost = p => isOwner() || (p.user_id === S.me.id && adminOf(p.project_id));
+const canManagePost = p => isOwner() || (p.user_id === S.me.id && (!p.project_id || adminOf(p.project_id)));
 function diaryHTML(){
-  const E = adminOf(), D = S.draft;
-  const posts = [...S.posts].sort((a, b) => b.pinned - a.pinned || b.created_at.localeCompare(a.created_at));
+  const C = S.view === 'tablon', E = C || adminOf(), D = S.draft; // C: tablón de clase (todos publican, sin reuniones)
+  const posts = [...(C ? S.cposts : S.posts)].sort((a, b) => b.pinned - a.pinned || b.created_at.localeCompare(a.created_at));
   return `<div class="diary">
     ${E ? `<div class="card-box composer">
       <div class="row" style="margin-bottom:8px">${av(S.me.id, 'l')}<b>Nueva publicación</b><span class="small mut">· la verán todos y recibirán un aviso</span></div>
       ${D.meeting ? `<div class="grid4" style="grid-template-columns:1fr 1fr 2fr;margin-bottom:8px"><div><label>Día</label><input type="date" value="${D.meeting.date}" oninput="S.draft.meeting.date=this.value"></div>
         <div><label>Hora</label><input type="time" value="${D.meeting.time}" oninput="S.draft.meeting.time=this.value"></div><div><label>Lugar</label><input value="${esc(D.meeting.place)}" placeholder="Taller, aula 12, Meet…" oninput="S.draft.meeting.place=this.value"></div></div>` : ''}
-      <textarea id="pbody" placeholder="${D.meeting ? 'Orden del día (uno por línea: - Revisar planos…)' : 'Escribe un aviso, una novedad o un resumen de la reunión…'}" oninput="S.draft.body=this.value">${esc(D.body)}</textarea>
+      <textarea id="pbody" placeholder="${D.meeting ? 'Orden del día (uno por línea: - Revisar planos…)' : C ? 'Escribe un aviso o una pregunta para la clase…' : 'Escribe un aviso, una novedad o un resumen de la reunión…'}" oninput="S.draft.body=this.value">${esc(D.body)}</textarea>
       ${D.images.length ? `<div class="thumbs">${D.images.map((im, i) => `<div><img src="${im.url}" alt=""><button onclick="S.draft.images.splice(${i},1);render()" aria-label="Quitar foto">${ic('x', 'sm')}</button></div>`).join('')}</div>` : ''}
       ${D.poll ? `<div class="poll">${D.poll.map((o, i) => `<div class="row"><input id="po-${i}" value="${esc(o)}" placeholder="Opción ${i + 1}" oninput="S.draft.poll[${i}]=this.value">${D.poll.length > 2 ? `<button class="ico" onclick="S.draft.poll.splice(${i},1);render()">${ic('x', 'sm')}</button>` : ''}</div>`).join('')}
         <div class="row">${D.poll.length < 10 ? `<button class="btn sm ghost" onclick="S.draft.poll.push('');render()">${ic('plus', 'sm')} Opción</button>` : ''}<button class="btn sm ghost" onclick="S.draft.poll=null;render()">Quitar encuesta</button></div></div>` : ''}
       <div class="row" style="margin-top:10px">
         <label class="btn ghost" style="margin:0;color:var(--txt2)">${ic('image')} Fotos<input type="file" accept="image/*" multiple hidden onchange="addImages(this.files)"></label>
         ${D.poll || D.meeting ? '' : `<button class="btn ghost" onclick="S.draft.poll=['','']; render()">${ic('chart-bar')} Encuesta</button>`}
-        <button class="btn ghost ${D.meeting ? 'on' : ''}" onclick="S.draft.meeting=S.draft.meeting?null:{date:addDays(today(),1),time:'17:00',place:''};S.draft.poll=null;render()">${ic('calendar-clock')} ${D.meeting ? 'Quitar reunión' : 'Convocar reunión'}</button>
+        ${C ? '' : `<button class="btn ghost ${D.meeting ? 'on' : ''}" onclick="S.draft.meeting=S.draft.meeting?null:{date:addDays(today(),1),time:'17:00',place:''};S.draft.poll=null;render()">${ic('calendar-clock')} ${D.meeting ? 'Quitar reunión' : 'Convocar reunión'}</button>`}
         <span class="grow"></span>
         <button class="btn pri" ${S.busy ? 'disabled' : ''} onclick="publishPost()">${ic('send')} ${S.busy ? 'Publicando…' : D.meeting ? 'Convocar' : 'Publicar'}</button>
       </div></div>` : `<div class="banner info">${ic('info')} Solo los admins de este proyecto pueden publicar. Tú puedes leer, reaccionar y votar en las encuestas.</div>`}
-    ${posts.map(postHTML).join('') || `<div class="card-box post">${emptyState('megaphone', 'El diario está vacío', E ? 'Publica el primer aviso.' : 'Aquí aparecerán los avisos de los admins.')}</div>`}
+    ${posts.map(postHTML).join('') || `<div class="card-box post">${emptyState('megaphone', C ? 'El tablón está vacío' : 'El diario está vacío', E ? 'Publica el primer aviso o encuesta.' : 'Aquí aparecerán los avisos de los admins.')}</div>`}
   </div>`;
 }
 function postHTML(p){
   const imgs = p.images.map(x => imgUrl('diario', x)).filter(Boolean), M = canManagePost(p);
-  const votes = S.votes.filter(v => v.post_id === p.id), mine = votes.find(v => v.user_id === S.me.id);
+  const votes = allVotes().filter(v => v.post_id === p.id), mine = votes.find(v => v.user_id === S.me.id);
   return `<article class="card-box post ${p.pinned ? 'pin' : ''}">
     <div class="hd">${av(p.user_id, 'l')}<div class="grow"><div class="row" style="gap:6px"><b>${esc(pname(p.user_id))}</b>${roleBadge(p.user_id, p.project_id)}</div>
       <small class="mut">${fmtT(p.created_at)}${p.edited_at ? ' · editado' : ''}</small></div>
@@ -274,7 +274,7 @@ function postHTML(p){
       return `<button class="opt ${mine?.option === i ? 'mine' : ''}" onclick="vote('${p.id}',${i})" title="${esc(c.map(v => pname(v.user_id)).join(', ') || 'Sin votos')}">
         <span class="fill" style="width:${mine ? pct : 0}%"></span>${mine?.option === i ? ic('circle-check', 'sm') : ic('circle', 'sm')}<span>${esc(o)}</span>${mine ? `<span class="pct">${pct}% · ${c.length}</span>` : ''}</button>`; }).join('')}
       <small class="mut">${votes.length} voto${votes.length === 1 ? '' : 's'}${mine ? ' · pulsa tu opción para quitar el voto' : ' · vota para ver los resultados'}</small></div>` : ''}
-    <div class="reacts">${REACT_POST.map(em => { const rs = S.preacts.filter(r => r.post_id === p.id && r.emoji === em), me = rs.some(r => r.user_id === S.me.id);
+    <div class="reacts">${REACT_POST.map(em => { const rs = allReacts().filter(r => r.post_id === p.id && r.emoji === em), me = rs.some(r => r.user_id === S.me.id);
       return `<button class="${me ? 'on' : ''} ${rs.length ? 'has' : ''}" title="${esc(rs.map(r => pname(r.user_id)).join(', '))}" onclick="reactPost('${p.id}','${em}',${me})">${em}${rs.length ? ' ' + rs.length : ''}</button>`; }).join('')}</div>
   </article>`;
 }
@@ -296,7 +296,7 @@ async function addImages(files){
   render();
 }
 async function publishPost(){
-  const D = S.draft, body = D.body.trim(), poll = D.poll?.map(s => s.trim()).filter(Boolean) || null;
+  const C = S.view === 'tablon', D = S.draft, body = D.body.trim(), poll = D.poll?.map(s => s.trim()).filter(Boolean) || null;
   if (D.poll && poll.length < 2) return toast('La encuesta necesita al menos 2 opciones', 'err');
   if (D.meeting && !(D.meeting.date && D.meeting.time)) return toast('Pon el día y la hora de la reunión', 'err');
   if (!body && !D.images.length && !poll && !D.meeting) return toast('Escribe algo, añade fotos o una encuesta', 'err');
@@ -304,33 +304,34 @@ async function publishPost(){
   try {
     const paths = [];
     for (const im of D.images) {
-      const path = `${S.pid}/${newId()}.jpg`;
+      const path = `${C ? CLASS_DIR : S.pid}/${newId()}.jpg`;
       const { error } = await sb.storage.from('diario').upload(path, im.blob, { contentType: 'image/jpeg' });
       if (error) throw error;
       paths.push(path);
     }
-    const meet = D.meeting ? { kind: 'meeting', meeting_at: new Date(`${D.meeting.date}T${D.meeting.time}`).toISOString(), place: D.meeting.place.trim() || null } : {};
-    await q(sb.from('posts').insert({ project_id: S.pid, body, images: paths, poll_options: poll, ...meet }));
+    const meet = D.meeting && !C ? { kind: 'meeting', meeting_at: new Date(`${D.meeting.date}T${D.meeting.time}`).toISOString(), place: D.meeting.place.trim() || null } : {};
+    await q(sb.from('posts').insert({ project_id: C ? null : S.pid, body, images: paths, poll_options: poll, ...meet }));
     D.images.forEach(im => URL.revokeObjectURL(im.url));
     if (D.meeting) track('f:meeting');
-    S.draft = { body:'', images:[], poll:null, meeting:null }; toast(meet.kind ? 'Reunión convocada: todos recibirán un aviso' : 'Publicado en el diario');
+    S.draft = { body:'', images:[], poll:null, meeting:null }; toast(meet.kind ? 'Reunión convocada: todos recibirán un aviso' : C ? 'Publicado en el tablón' : 'Publicado en el diario');
+    if (C) await loadClass();
   } catch (e) { toast('No se pudo publicar: ' + (e.message || e), 'err'); }
   S.busy = false; render();
 }
 async function editPost(id){
-  const p = S.posts.find(x => x.id === id), v = prompt('Edita la publicación:', p.body);
+  const p = allPosts().find(x => x.id === id), v = prompt('Edita la publicación:', p.body);
   if (v == null || v.trim() === p.body) return;
   if (!v.trim() && !p.images.length && !p.poll_options) return toast('La publicación no puede quedar vacía', 'err');
   await q(sb.from('posts').update({ body: v.trim() }).eq('id', id));
 }
 async function delPost(id){
-  const p = S.posts.find(x => x.id === id);
-  if (!confirm('¿Eliminar esta publicación del diario?')) return;
+  const p = allPosts().find(x => x.id === id);
+  if (!confirm('¿Eliminar esta publicación?')) return;
   await q(sb.from('posts').delete().eq('id', id));
   if (p.images.length) sb.storage.from('diario').remove(p.images).then(() => {});
 }
 async function vote(pid, i){
-  const mine = S.votes.find(v => v.post_id === pid && v.user_id === S.me.id);
+  const mine = allVotes().find(v => v.post_id === pid && v.user_id === S.me.id);
   if (mine?.option === i) await q(sb.from('post_votes').delete().match({ post_id: pid, user_id: S.me.id }));
   else await q(sb.from('post_votes').upsert({ post_id: pid, user_id: S.me.id, option: i }, { onConflict: 'post_id,user_id' }));
 }

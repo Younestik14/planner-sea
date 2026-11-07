@@ -33,6 +33,10 @@ function palItems(){
   add('list-todo', 'Ir a Mis tareas', '', () => go('mine'));
   add('calendar-range', 'Calendario de clase', '', () => go('week'));
   add('clock', 'Horario', '', () => go('timetable'));
+  add('pin', 'Tablón de clase', '', () => go('tablon'));
+  add('book-open', 'Apuntes', '', () => go('apuntes'));
+  add('sun', 'Mi plan de hoy', '', () => openDay(today()));
+  if (isOwner()) add('user-check', 'Seguimiento', '', () => go('track'));
   add('calculator', 'Calculadoras eléctricas', 'Intensidad, potencia, caída de tensión, sección', () => openCalc());
   if (proj() && adminOf()) add('plus', 'Nueva tarea', proj().name, async () => { if (S.view !== 'board') await go('board'); $('.addt input')?.focus(); });
   if (canCreate()) add('folder-plus', 'Nuevo proyecto', '', () => openModal('project-new'));

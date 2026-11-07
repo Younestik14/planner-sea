@@ -166,13 +166,13 @@ function materialHTML(){
       <div class="card-box kpi"><b style="color:var(--acc2)">${eur(by('pedido'))}</b><span>Pedido</span></div>
       <div class="card-box kpi"><b style="color:var(--ok-t)">${eur(by('recibido'))}</b><span>Recibido</span></div></div>
     <div class="row" style="margin:16px 0 10px"><input id="mat-new" style="max-width:420px" placeholder="+ Añadir material (Enter)… Ej.: Cable RZ1-K 2,5 mm²" onkeydown="if(event.key==='Enter')addMat(this)">
-            <span class="grow"></span><button class="btn" onclick="exportExcel()">${ic('file-spreadsheet')} Exportar a Excel</button></div>
+            <span class="grow"></span><button class="btn" onclick="S.matPaste='';openModal('matimport')">${ic('clipboard-paste')} Importar desde Excel</button><button class="btn" onclick="exportExcel()">${ic('file-spreadsheet')} Exportar a Excel</button></div>
     <div class="card-box tablewrap"><table class="ltable mat"><thead><tr><th>Artículo</th><th>Cantidad</th><th>Ud.</th><th>Precio ud.</th><th>Total</th><th>Proveedor</th><th>Estado</th><th>Enlace</th><th></th></tr></thead>
-    <tbody>${rows.map(m => `<tr style="cursor:default"><td>${cell(m, 'name', 'text', 'min-width:200px')}</td><td>${cell(m, 'qty', 'number', 'width:80px')}</td><td>${cell(m, 'unit', 'text', 'width:60px')}</td>
+    <tbody>${rows.map(m => `<tr style="cursor:default" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="dropMat(event,'${m.id}')"><td><div class="row" style="gap:4px"><span class="grip" draggable="true" title="Arrastra para reordenar" ondragstart="event.dataTransfer.setData('text/mat','${m.id}')">${ic('grip-vertical', 'sm')}</span>${cell(m, 'name', 'text', 'min-width:200px')}</div></td><td>${cell(m, 'qty', 'number', 'width:80px')}</td><td>${cell(m, 'unit', 'text', 'width:60px')}</td>
       <td>${mine(m) ? cell(m, 'unit_price', 'number', 'width:90px') : eur(m.unit_price)}</td><td><b>${m.unit_price != null ? eur(m.unit_price * m.qty) : '—'}</b></td><td>${cell(m, 'supplier', 'text', 'width:130px')}</td>
       <td>${mine(m) ? `<select class="cellsel" onchange="saveMat('${m.id}','status',this.value)">${Object.entries(MAT_STATUS).map(([k, [n]]) => `<option value="${k}" ${m.status === k ? 'selected' : ''}>${n}</option>`).join('')}</select>` : `<span class="chip ${MAT_STATUS[m.status][1]}">${MAT_STATUS[m.status][0]}</span>`}</td>
       <td>${mine(m) ? cell(m, 'link', 'url', 'width:130px') : ''}${okUrl(m.link) ? ` <a href="${esc(m.link)}" target="_blank" rel="noopener" title="Abrir">${ic('external-link', 'sm')}</a>` : ''}</td>
-      <td>${mine(m) ? `<button class="ico" title="Eliminar" onclick="delMat('${m.id}')">${ic('trash-2', 'sm')}</button>` : ''}</td></tr>`).join('') || `<tr><td colspan="9">${emptyState('package', 'Sin material todavía', 'Añade el primer artículo arriba.')}</td></tr>`}</tbody></table></div></div>`;
+      <td style="white-space:nowrap"><button class="ico" title="Duplicar" onclick="dupMat('${m.id}')">${ic('copy', 'sm')}</button><button class="ico" title="Eliminar" onclick="delMat('${m.id}')">${ic('trash-2', 'sm')}</button></td></tr>`).join('') || `<tr><td colspan="9">${emptyState('package', 'Sin material todavía', 'Añade el primer artículo arriba.')}</td></tr>`}</tbody></table></div></div>`;
 }
 async function addMat(el){
   const name = el.value.trim(); if (!name) return; el.value = '';
@@ -192,6 +192,7 @@ async function delMat(id){ if (!confirm('¿Eliminar este artículo?')) return; S
 
 /* ============ 14 · Calendario de clase (entregas de proyectos + exámenes, lo ve todo el mundo) ============ */
 function weekHTML(){
+  if (S.calView === undefined) S.calView = ls('calView') || 'month';
   const base = S.ccal || new Date(), y = base.getFullYear(), m = base.getMonth(), O = isOwner();
   const first = new Date(y, m, 1), start = new Date(y, m, 1 - (first.getDay() + 6) % 7), td = today();
   const fm = x => !S.calMod || x.module === S.calMod;
@@ -200,10 +201,10 @@ function weekHTML(){
   for (let i = 0; i < 42; i++) {
     const d = new Date(start); d.setDate(start.getDate() + i); const k = isoOf(d);
     const ex = exams.filter(e => e.exam_date === k), en = ents.filter(p => p.due_date === k), my = S.pitems.filter(x => x.kind === 'event' && x.day === k);
-    cells += `<div class="dc dc-click ${d.getMonth() !== m ? 'out' : ''} ${k === td ? 'today' : ''}" onclick="openDay('${k}')" title="Ver el día"><div class="dn">${d.getDate()}</div>
+    cells += `<div class="dc dc-click ${d.getMonth() !== m ? 'out' : ''} ${k === td ? 'today' : ''}" onclick="openDay('${k}')" ${dropAttrs(k)} title="Ver el día"><div class="dn">${d.getDate()}</div>
       ${ex.map(examChip).join('')}
       ${en.map(p => `<button class="ct ce" style="--p:${p.color || 'var(--acc)'}" title="Entrega: ${esc(p.name)}${modOf(p.module) ? ' · ' + esc(modOf(p.module).short) : ''}" onclick="event.stopPropagation();goProject('${p.id}')">${ic('flag', 'sm')} ${esc(p.name)}</button>`).join('')}
-      ${my.map(x => `<span class="ct cp" title="Privado: solo lo ves tú">${ic('lock', 'sm')} ${x.at_time ? x.at_time + ' ' : ''}${esc(x.title)}</span>`).join('')}</div>`;
+      ${my.map(pChip).join('')}</div>`;
   }
   const mv = k => `S.ccal=new Date(${y},${m + k},1);render()`;
   const next = [...exams.filter(e => e.exam_date >= td).map(e => ({ d: e.exam_date, t: e.kind === 'event' ? 'Fecha' : 'Examen', n: e.title })), ...ents.filter(p => p.due_date >= td).map(p => ({ d: p.due_date, t: 'Entrega', n: p.name }))].sort((a, b) => a.d.localeCompare(b.d)).slice(0, 4);
@@ -211,11 +212,12 @@ function weekHTML(){
       ${O ? `<button class="btn pri" onclick="S.examDay=null;S.dayK=null;editExam()">${ic('calendar-plus')} Añadir fecha para todos</button>` : ''}</div>
     <p class="mut" style="margin-top:0">Exámenes ${ic('graduation-cap', 'sm')}, fechas ${ic('calendar', 'sm')} y entregas ${ic('flag', 'sm')} de toda la clase, más tus cosas privadas ${ic('lock', 'sm')}. <b>Pulsa un día</b> para añadir tus cosas o tu plan de ese día.</p>
     ${next.length ? `<div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:14px">${next.map(x => `<span class="chip" style="${x.t === 'Examen' ? 'color:var(--bad-t);background:var(--bad-bg)' : ''}"><b>${x.t}</b>&nbsp;${esc(x.n)} · ${fmtD(x.d)}${x.d === td ? ' (hoy)' : ''}</span>`).join('')}</div>` : ''}
-    <div class="row" style="margin-bottom:12px">
+    <div class="row" style="margin-bottom:12px;flex-wrap:wrap"><div class="seg">${[['month', 'Mes'], ['week', 'Semana']].map(([k, l]) => `<button class="${(S.calView || 'month') === k ? 'on' : ''}" onclick="S.calView='${k}';ls('calView','${k}');render()">${l}</button>`).join('')}</div><span class="grow"></span><select style="width:auto" aria-label="Filtrar por módulo" onchange="S.calMod=this.value||null;render()"><option value="">Todos los módulos</option>${Object.entries(S.settings?.timetable?.subjects || {}).map(([k, m]) => `<option value="${k}" ${k === S.calMod ? 'selected' : ''}>${esc(m.short)}</option>`).join('')}</select></div>
+    ${S.calView === 'week' ? weekViewHTML(exams, ents) : `<div class="row" style="margin-bottom:12px">
       <button class="btn" onclick="${mv(-1)}" aria-label="Mes anterior">${ic('chevron-left')}</button><button class="btn" onclick="S.ccal=null;render()">Hoy</button><button class="btn" onclick="${mv(1)}" aria-label="Mes siguiente">${ic('chevron-right')}</button>
       <h3 style="margin:0 0 0 8px" class="grow">${cap(first.toLocaleDateString('es-ES', { month:'long', year:'numeric' }))}</h3>
-      <select style="width:auto" aria-label="Filtrar por módulo" onchange="S.calMod=this.value||null;render()"><option value="">Todos los módulos</option>${Object.entries(S.settings?.timetable?.subjects || {}).map(([k, m]) => `<option value="${k}" ${k === S.calMod ? 'selected' : ''}>${esc(m.short)}</option>`).join('')}</select></div>
-    <div class="cal">${['lun','mar','mié','jue','vie','sáb','dom'].map(d => `<div class="dh">${d}</div>`).join('')}${cells}</div></div>`;
+</div>
+    <div class="cal">${['lun','mar','mié','jue','vie','sáb','dom'].map(d => `<div class="dh">${d}</div>`).join('')}${cells}</div>`}</div>`;
 }
 
 /* ============ 15 · Notas privadas en cada tarea ============ */
@@ -278,7 +280,7 @@ function auditHTML(){
 const FEATURES = { 'f:palette': 'Menú Ctrl+K', 'f:ctx': 'Clic derecho en tarjetas', 'f:nl': 'Tareas con texto natural', 'f:undo': 'Ctrl+Z', 'f:dragdate': 'Arrastrar fechas',
   'f:present': 'Pantalla de clase', 'f:report': 'Informe PDF', 'f:excel': 'Excel', 'f:quick': 'Respuestas rápidas', 'f:wikicomment': 'Comentarios en notas', 'f:meeting': 'Convocar reunión',
   'f:rsvp': 'Responder a reunión', 'f:agreements': 'Acuerdos → tareas', 'f:calc': 'Calculadoras', 'f:calcinsert': 'Insertar cálculo', 'f:material': 'Lista de material', 'f:wikitemplate': 'Plantillas de notas' };
-const VIEW_NAMES = { home: 'Inicio', mine: 'Mis tareas', week: 'Calendario de clase', timetable: 'Horario', person: 'Perfiles', compare: 'Comparar', audit: 'Registro', usage: 'Uso', ...Object.fromEntries(PVIEWS.map(v => [v[0], v[1]])) };
+const VIEW_NAMES = { home: 'Inicio', mine: 'Mis tareas', week: 'Calendario de clase', timetable: 'Horario', tablon: 'Tablón', apuntes: 'Apuntes', track: 'Seguimiento', person: 'Perfiles', compare: 'Comparar', audit: 'Registro', usage: 'Uso', ...Object.fromEntries(PVIEWS.map(v => [v[0], v[1]])) };
 async function loadUsage(){ S.usage = isOwner() ? await q(sb.from('usage_events').select('user_id,kind,at').gte('at', addDays(today(), -30)).order('at').limit(20000)) : []; }
 function usageHTML(){
   const ev = S.usage || [], days = Array.from({ length: 30 }, (_, i) => addDays(today(), i - 29));
@@ -402,7 +404,8 @@ function modulesHTML(T){
     return `<div class="card-box mod-c" style="--c:${m.color}"><b>${esc(m.short)}</b><small class="mut">${esc(m.teacher || '—')} · ${esc(m.room || '—')}</small>
       ${ps.map(p => `<a href="#" onclick="event.preventDefault();goProject('${p.id}')">${ic('folder-kanban', 'sm')} ${esc(p.name)}${p.due_date ? ` <span class="mut">· entrega ${fmtD(p.due_date)}</span>` : ''}</a>`).join('')}
       ${ex.map(e => `<a href="#" class="bad-t" onclick="event.preventDefault();editExam('${e.id}')">${ic('graduation-cap', 'sm')} ${esc(e.title)} <span class="mut">· ${fmtD(e.exam_date)}</span></a>`).join('')}
-      ${!ps.length && !ex.length ? '<small class="mut">Sin proyectos ni exámenes</small>' : ''}</div>`; }).join('')}</div>`;
+      ${!ps.length && !ex.length ? '<small class="mut">Sin proyectos ni exámenes</small>' : ''}
+      <a href="#" onclick="event.preventDefault();S.apMod='${k}';go('apuntes')">${ic('book-open', 'sm')} ${S.notes.filter(n => n.module === k).length} apuntes</a></div>`; }).join('')}</div>`;
 }
 
 // el resaltado de la clase actual avanza solo mientras se mira el horario

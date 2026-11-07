@@ -25,8 +25,10 @@ function render(){
   </div>
   <nav class="bottomnav">
     <button class="${S.view === 'home' ? 'on' : ''}" onclick="go('home')">${ic('house', 'lg')}Inicio</button>
-    <button class="${S.view === 'mine' ? 'on' : ''}" onclick="go('mine')">${ic('list-todo', 'lg')}Mis tareas</button>
-    <button class="${PVIEWS.some(v => v[0] === S.view) ? 'on' : ''}" onclick="toggleSide(true)">${ic('folder-kanban', 'lg')}Proyectos</button>
+    <button class="${S.view === 'mine' ? 'on' : ''}" onclick="go('mine')">${ic('list-todo', 'lg')}Tareas</button>
+    <button class="${S.view === 'week' ? 'on' : ''}" onclick="go('week')">${ic('calendar-range', 'lg')}Calendario</button>
+    <button class="${S.view === 'timetable' ? 'on' : ''}" onclick="go('timetable')">${ic('clock', 'lg')}Horario</button>
+    <button class="${PVIEWS.some(v => v[0] === S.view) || ['tablon', 'apuntes', 'track'].includes(S.view) ? 'on' : ''}" onclick="toggleSide(true)">${ic('menu', 'lg')}Más</button>
     <button onclick="togglePanel('notifs')">${ic('bell', 'lg')}Avisos${unread ? `<b>${unread}</b>` : ''}</button>
   </nav>
   ${S.selMode && S.sel.size ? bulkBarHTML() : ''}`;
@@ -48,11 +50,13 @@ function menuHTML(){
     ${isOwner() ? `<button onclick="openModal('members')">${ic('users')} Miembros y permisos</button>` : ''}
     <button onclick="setTheme('${light ? 'dark' : 'light'}')">${ic(light ? 'moon' : 'sun')} Modo ${light ? 'oscuro' : 'claro'}</button>
     <button onclick="ls('sound', ls('sound') === false);render()">${ic(ls('sound') === false ? 'volume-x' : 'volume-2')} Sonido ${ls('sound') === false ? 'desactivado' : 'activado'}</button>
+    <button onclick="toggleBrowserNotifs()">${ic(ls('bnotif') ? 'bell-ring' : 'bell-off')} Avisos del navegador ${ls('bnotif') ? 'activados' : 'desactivados'}</button>
     <button onclick="S.panel=null;openModal('keys')">${ic('keyboard')} Atajos de teclado</button>
     <hr><button onclick="logout()">${ic('log-out')} Cerrar sesión</button></div>`;
 }
 function setTheme(t){ document.documentElement.dataset.theme = t; ls('theme', t); render(); }
 
+const nav = (v, icon, label, extra = '') => `<button class="nav ${S.view === v ? 'on' : ''}" onclick="go('${v}')">${ic(icon)} ${label}${extra ? ' ' + extra : ''}</button>`;
 function sideHTML(){
   const act = S.projects.filter(p => !p.is_template && !p.archived), arch = S.projects.filter(p => !p.is_template && p.archived);
   const tpl = S.projects.filter(p => p.is_template);
@@ -64,19 +68,23 @@ function sideHTML(){
       <small class="mut">${done}/${tot} tareas${p.due_date && !p.archived ? ` · entrega ${fmtD(p.due_date)}` : ''}</small></button>`; };
   const openArch = !!ls('arch');
   return `
-    <button class="nav ${S.view === 'home' ? 'on' : ''}" onclick="go('home')">${ic('house')} Inicio</button>
-    <button class="nav ${S.view === 'mine' ? 'on' : ''}" onclick="go('mine')">${ic('list-todo')} Mis tareas <span class="cnt">${S.mine.filter(t => t.status !== 'completada').length}</span></button>
-    <button class="nav ${S.view === 'week' ? 'on' : ''}" onclick="go('week')">${ic('calendar-range')} Calendario de clase</button>
-    <button class="nav ${S.view === 'timetable' ? 'on' : ''}" onclick="go('timetable')">${ic('clock')} Horario</button>
-    ${isOwner() ? `<h4>Administración</h4>
-      <button class="nav ${S.view === 'compare' ? 'on' : ''}" onclick="go('compare')">${ic('columns-3')} Comparar proyectos</button>
-      <button class="nav ${S.view === 'usage' ? 'on' : ''}" onclick="go('usage')">${ic('chart-no-axes-column')} Estadísticas de uso</button>
-      <button class="nav ${S.view === 'audit' ? 'on' : ''}" onclick="go('audit')">${ic('scroll-text')} Registro</button>
-      <button class="nav" onclick="openModal('banner')">${ic('megaphone')} Anuncio general${bannerActive() ? ' <span class="cnt">activo</span>' : ''}</button>` : ''}
+    ${nav('home', 'house', 'Inicio')}
+    ${nav('mine', 'list-todo', 'Mis tareas', `<span class="cnt">${S.mine.filter(t => t.status !== 'completada').length}</span>`)}
+    <h4>Clase</h4>
+    ${nav('week', 'calendar-range', 'Calendario')}
+    ${nav('timetable', 'clock', 'Horario')}
+    ${nav('tablon', 'pin', 'Tablón')}
+    ${nav('apuntes', 'book-open', 'Apuntes')}
     <h4>Proyectos ${canCreate() ? `<button class="ico" title="Nuevo proyecto" onclick="openModal('project-new')">${ic('plus', 'sm')}</button>` : ''}</h4>
     ${act.map(pj).join('') || '<p class="mut small" style="padding:0 10px">Aún no hay proyectos activos</p>'}
     ${tpl.length && canCreate() ? `<h4>Plantillas</h4>${tpl.map(p => `<button class="pj ${p.id === S.pid && pv ? 'on' : ''}" style="--c:${esc(p.color)}" onclick="goProject('${p.id}')"><div class="n">${ic('layers', 'sm')}<span>${esc(p.name)}</span></div></button>`).join('')}` : ''}
     ${arch.length ? `<h4 style="cursor:pointer" onclick="ls('arch',${!openArch});render()">Archivados (${arch.length}) ${ic(openArch ? 'chevron-up' : 'chevron-down', 'sm')}</h4>${openArch ? arch.map(pj).join('') : ''}` : ''}
+    ${isOwner() ? `<h4>Administración</h4>
+      ${nav('track', 'user-check', 'Seguimiento')}
+      ${nav('compare', 'columns-3', 'Comparar proyectos')}
+      <button class="nav ${S.view === 'usage' ? 'on' : ''}" onclick="go('usage')">${ic('chart-no-axes-column')} Estadísticas de uso</button>
+      <button class="nav ${S.view === 'audit' ? 'on' : ''}" onclick="go('audit')">${ic('scroll-text')} Registro</button>
+      <button class="nav" onclick="openModal('banner')">${ic('megaphone')} Anuncio general${bannerActive() ? ' <span class="cnt">activo</span>' : ''}</button>` : ''}
     <div style="flex:1"></div>
     <p class="mut small" style="padding:10px;margin:0">${SCHOOL}</p>`;
 }
@@ -88,11 +96,14 @@ function mainHTML(){
   if (S.view === 'compare') return compareHTML();
   if (S.view === 'week') return weekHTML();
   if (S.view === 'timetable') return timetableHTML();
+  if (S.view === 'tablon') return tablonHTML();
+  if (S.view === 'apuntes') return notesHTML();
+  if (S.view === 'track' && isOwner()) return trackHTML();
   if (S.view === 'audit') return auditHTML();
   if (S.view === 'usage') return usageHTML();
   const p = proj();
   if (!p) return emptyState('folder-kanban', 'No hay proyectos todavía', canCreate() ? 'Crea el primero con el botón + del menú.' : 'Cuando se cree uno, aparecerá aquí.');
-  const view = { material: materialHTML, board: boardHTML, list: listHTML, gantt: ganttHTML, cal: calHTML, diary: diaryHTML, wiki: wikiHTML, team: teamHTML, stats: statsHTML, files: filesHTML, trash: trashHTML }[S.view];
+  const view = { material: materialHTML, deliv: delivHTML, board: boardHTML, list: listHTML, gantt: ganttHTML, cal: calHTML, diary: diaryHTML, wiki: wikiHTML, team: teamHTML, stats: statsHTML, files: filesHTML, trash: trashHTML }[S.view];
   const anim = S._lastView !== S.view + S.pid && !reduceMotion(); S._lastView = S.view + S.pid;
   return projectHeaderHTML(p) + `<div class="${anim ? 'view-in' : ''}" style="display:contents">${view ? view() : `<div class="hist">${histHTML(S.activity, true)}</div>`}</div>`;
 }
@@ -103,7 +114,7 @@ function projectHeaderHTML(p){
   const done = total - open.length, late = open.filter(t => t.due_date && daysLeft(t.due_date) < 0).length;
   const pin = S.posts.find(x => x.pinned);
   return `
-  <div class="ph" style="--c:${esc(p.color)}">
+  <div class="ph ${p.cover ? 'has-cover' : ''}" style="--c:${esc(p.color)};${p.cover ? `--cover:${esc(coverCss(p.cover))}` : ''}">
     <h2>${p.emoji ? `<span class="pemoji">${esc(p.emoji)}</span>` : '<i class="dot"></i>'}${esc(p.name)}</h2>
     <button class="ico" title="${isFav('p', p.id) ? 'Quitar de accesos directos' : 'Añadir a accesos directos de Inicio'}" onclick="toggleFav('p','${p.id}')">${ic('star', isFav('p', p.id) ? 'fav' : '')}</button>
     ${modChip(p.module)}${p.is_template ? '<span class="chip">Plantilla</span>' : ''}${p.archived ? '<span class="chip">Archivado</span>' : ''}${E && !isOwner() ? '<span class="badge">Eres admin</span>' : ''}
@@ -144,7 +155,7 @@ function boardToolsHTML(){
   const E = adminOf();
   return `<div class="tools">
     ${E ? `<button class="ico ${S.selMode ? 'on' : ''}" onclick="S.selMode=!S.selMode;S.sel.clear();render()" title="Seleccionar varias tareas">${ic('list-checks')}</button>` : ''}
-    <button class="ico ${S.compact ? 'on' : ''}" onclick="S.compact=!S.compact;ls('compact',S.compact);render()" title="Vista compacta">${ic('rows-3')}</button>
+    <button class="btn sm ${S.compact ? 'on' : ''}" onclick="S.compact=!S.compact;ls('compact',S.compact);render()" title="Tarjetas más pequeñas para ver más tareas">${ic(S.compact ? 'rows-3' : 'rows-2', 'sm')} ${S.compact ? 'Compacto' : 'Normal'}</button>
     <select onchange="S.sort=this.value;ls('sort',S.sort);render()" title="Ordenar tarjetas">
       ${[['manual','Orden manual'],['due','Por fecha'],['prio','Por prioridad'],['person','Por persona'],['votes','Por votos']].map(([k, n]) => `<option value="${k}" ${S.sort === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
     ${labelsOf().length ? `<select onchange="S.label=this.value;render()"><option value="">Todas las etiquetas</option>${labelsOf().map(l => `<option ${l === S.label ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>` : ''}
@@ -189,6 +200,7 @@ async function clickNotif(ids){
   if (unread.length) { unread.forEach(x => x.read = true); q(sb.from('notifications').update({ read:true }).in('id', unread.map(x => x.id))); }
   if (n.type === 'access_request') return openModal('members');
   if (n.type === 'exam') return go('week');
+  if (n.type === 'post' && !n.project_id) return go('tablon');
   if (!n.project_id || !proj(n.project_id)) return render();
   if (['post', 'notice'].includes(n.type)) return goProject(n.project_id, 'diary');
   await goProject(n.project_id);
@@ -200,7 +212,7 @@ async function readAll(){ S.notifs.forEach(n => n.read = true); render(); await 
 function renderModal(){
   const m = S.modal;
   if (!m) { $('#modal').innerHTML = ''; return; }
-  const extra = { minutes: minutesHTML, agreements: agreementsHTML, wikinew: wikiNewHTML, calc: calcHTML, banner: bannerFormHTML, exam: examFormHTML, day: dayHTML }[m];
+  const extra = { minutes: minutesHTML, agreements: agreementsHTML, wikinew: wikiNewHTML, calc: calcHTML, banner: bannerFormHTML, exam: examFormHTML, day: dayHTML, matimport: matImportHTML }[m];
   const html = extra ? extra() : m === 'task' ? taskHTML() : m === 'members' ? membersHTML() : m === 'summary' ? summaryHTML() : m === 'keys' ? keysHTML() : m === 'profile' ? profileHTML()
              : projectFormHTML(m === 'project-edit' ? proj() : null);
   if (!html) { S.modal = null; $('#modal').innerHTML = ''; return; }
@@ -211,7 +223,7 @@ function renderModal(){
   icons();
 }
 function openModal(m){ S.modal = m; S.panel = null; closeSide(); render(); renderModal(); }
-function closeModal(){ S.modal = null; S.tid = null; S.reply = null; S.cdraft = []; typingChannel(null); setHash(); renderModal(); render(); }
+function closeModal(){ S.coverDraft = undefined; S.modal = null; S.tid = null; S.reply = null; S.cdraft = []; typingChannel(null); setHash(); renderModal(); render(); }
 
 function taskHTML(){
   const t = S.tasks.find(x => x.id === S.tid);
@@ -301,8 +313,8 @@ function taskHTML(){
           ${S.reply ? (rc => rc ? `<div class="quote row">↩ Respondiendo a <b>${esc(pname(rc.user_id))}</b>: <span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(rc.body || '📷 Foto')}</span><button class="ico" onclick="S.reply=null;keep(renderModal)">${ic('x', 'sm')}</button></div>` : '')(S.comments.find(x => x.id === S.reply)) : ''}
           ${S.cdraft.length ? `<div class="thumbs" style="margin:0 0 8px">${S.cdraft.map((im, i) => `<div><img src="${im.url}" alt=""><button onclick="S.cdraft.splice(${i},1);keep(renderModal)" aria-label="Quitar foto">${ic('x', 'sm')}</button></div>`).join('')}</div>` : ''}
           <div id="mbox"></div>
-          <textarea id="cbody" placeholder="Escribe un mensaje… Usa @ para mencionar. Los enlaces de Drive se adjuntan solos." oninput="mentionInput(this);sendTyping()" onpaste="pasteChatImages(event)"
-            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();const f=$('#mbox button');f?f.onmousedown(event):sendComment()}"></textarea>
+          <textarea id="cbody" placeholder="Escribe un mensaje… Usa @ para mencionar. Los enlaces de Drive se adjuntan solos." oninput="mentionInput(this);sendTyping();chatDraft(S.tid,this.value)" onpaste="pasteChatImages(event)"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();const f=$('#mbox button');f?f.onmousedown(event):sendComment()}">${esc(chatDraft(S.tid))}</textarea>
           ${S.qr ? quickRepliesHTML() : ''}
           <div class="r"><button class="ico ${S.qr ? 'on' : ''}" title="Respuestas rápidas" onclick="S.qr=!S.qr;keep(renderModal)">${ic('zap')}</button><label class="ico" style="margin:0" title="Adjuntar fotos (también puedes arrastrarlas o pegarlas)">${ic('image')}<input type="file" accept="image/*" multiple hidden onchange="addChatImages(this.files)"></label>
             <small class="mut hide-m">Enter enviar · Shift+Enter nueva línea · @ mencionar · arrastra o pega fotos</small><span class="grow"></span><button class="btn pri" ${S.busy ? 'disabled' : ''} onclick="sendComment()">${ic('send', 'sm')} ${S.busy ? 'Enviando…' : 'Enviar'}</button></div>
@@ -318,7 +330,9 @@ function projectFormHTML(p){
       <label>Nombre *</label><input id="p-name" value="${esc(p?.name)}" placeholder="Ej.: Proyecto de automatización">
       <label>Descripción</label><textarea id="p-desc" rows="3">${esc(p?.description)}</textarea>
       ${!p && S.projects.length ? `<label>Partir de una plantilla o proyecto <small>(copia columnas, tareas y subtareas, sin personas ni fechas)</small></label>
-        <select id="p-from"><option value="">— Proyecto vacío —</option>${[...S.projects].sort((a, b) => b.is_template - a.is_template).map(x => `<option value="${x.id}">${x.is_template ? '[Plantilla] ' : ''}${esc(x.name)}</option>`).join('')}</select>` : ''}
+        <select id="p-from" onchange="$('#p-preset-w').hidden=!!this.value"><option value="">— Proyecto vacío —</option>${[...S.projects].sort((a, b) => b.is_template - a.is_template).map(x => `<option value="${x.id}">${x.is_template ? '[Plantilla] ' : ''}${esc(x.name)}</option>`).join('')}</select>` : ''}
+      ${!p ? `<div id="p-preset-w"><label>Tipo de proyecto <small>(crea columnas y tareas típicas de partida; luego puedes cambiarlas)</small></label>
+        <select id="p-preset"><option value="">— Sin tareas de partida —</option>${Object.entries(PRESETS).map(([k, [n]]) => `<option value="${k}">${n}</option>`).join('')}</select></div>` : ''}
       <div class="grid4" style="grid-template-columns:2fr 1fr">
         <div><label>Carpeta de Google Drive</label><input id="p-drive" value="${esc(p?.drive_url)}" placeholder="https://drive.google.com/drive/folders/…"></div>
         <div><label>Fecha de entrega</label><input id="p-due" type="date" value="${p?.due_date || ''}"></div>
@@ -327,6 +341,7 @@ function projectFormHTML(p){
       <label>Emoji de portada <small>(sale junto al nombre y en la tarjeta de Inicio)</small></label>
       <div class="row" style="flex-wrap:wrap;gap:4px"><input id="p-emoji" value="${esc(p?.emoji || '')}" maxlength="8" style="width:70px;text-align:center;font-size:18px" placeholder="🙂">
         ${['🛴','⚡','🔌','💡','🏭','🔧','🤖','📡','🚦','🔋','🏗️','📐','🧪','📊','🎓','🛠️'].map(e => `<button type="button" class="ico" style="font-size:18px" onclick="$('#p-emoji').value='${e}'">${e}</button>`).join('')}</div>
+      ${coverPickHTML(p)}
       <label>Color</label><div class="pick">${COLORS.map(k => `<label class="${k === c ? 'on' : ''}" style="padding:3px"><input type="radio" name="pc" value="${k}" ${k === c ? 'checked' : ''} onchange="this.closest('.pick').querySelectorAll('label').forEach(l=>l.classList.toggle('on',l.contains(this)))"><span class="av" style="background:${k};margin:0"></span></label>`).join('')}</div>
       ${p ? `<label>Administradores de este proyecto <small>(pueden editar todo el proyecto y publicar en su diario)</small></label>
         ${own ? `<div class="pick">${members().filter(u => !u.is_admin).map(u => `<label class="${adm.includes(u.id) ? 'on' : ''}"><input type="checkbox" ${adm.includes(u.id) ? 'checked' : ''} onchange="toggleProjectAdmin('${p.id}','${u.id}',this.checked)">${av(u.id)}${esc(pname(u.id))}</label>`).join('') || '<span class="mut">No hay miembros todavía</span>'}</div>`

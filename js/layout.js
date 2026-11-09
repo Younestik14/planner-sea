@@ -103,7 +103,7 @@ function mainHTML(){
   if (S.view === 'usage') return usageHTML();
   const p = proj();
   if (!p) return emptyState('folder-kanban', 'No hay proyectos todavía', canCreate() ? 'Crea el primero con el botón + del menú.' : 'Cuando se cree uno, aparecerá aquí.');
-  const view = { material: materialHTML, deliv: delivHTML, board: boardHTML, list: listHTML, gantt: ganttHTML, cal: calHTML, diary: diaryHTML, wiki: wikiHTML, team: teamHTML, stats: statsHTML, files: filesHTML, trash: trashHTML }[S.view];
+  const view = { material: materialHTML, deliv: delivHTML, plans: plansHTML, decide: decideHTML, board: boardHTML, list: listHTML, gantt: ganttHTML, cal: calHTML, diary: diaryHTML, wiki: wikiHTML, team: teamHTML, stats: statsHTML, files: filesHTML, trash: trashHTML }[S.view];
   const anim = S._lastView !== S.view + S.pid && !reduceMotion(); S._lastView = S.view + S.pid;
   return projectHeaderHTML(p) + `<div class="${anim ? 'view-in' : ''}" style="display:contents">${view ? view() : `<div class="hist">${histHTML(S.activity, true)}</div>`}</div>`;
 }
@@ -120,7 +120,7 @@ function projectHeaderHTML(p){
     ${modChip(p.module)}${p.is_template ? '<span class="chip">Plantilla</span>' : ''}${p.archived ? '<span class="chip">Archivado</span>' : ''}${E && !isOwner() ? '<span class="badge">Eres admin</span>' : ''}
     <div class="acts">
       ${okUrl(p.drive_url) ? `<a class="btn" href="${esc(p.drive_url)}" target="_blank" rel="noopener">${ic('folder')} <span class="hide-m">Drive</span></a>` : ''}
-      <button class="btn" onclick="exportReport()" title="Informe para imprimir o guardar como PDF">${ic('file-text')} <span class="hide-m">Informe</span></button>
+      <button class="btn" onclick="openModal('docs')" title="Memoria técnica, presupuesto, presentación e informe">${ic('file-text')} <span class="hide-m">Documentos</span></button>
       <button class="btn" onclick="exportExcel()" title="Descargar en Excel">${ic('file-spreadsheet')} <span class="hide-m">Excel</span></button>
       ${E ? `<button class="btn" onclick="openModal('project-edit')">${ic('settings')} <span class="hide-m">Ajustes</span></button>` : ''}
     </div>
@@ -212,7 +212,7 @@ async function readAll(){ S.notifs.forEach(n => n.read = true); render(); await 
 function renderModal(){
   const m = S.modal;
   if (!m) { $('#modal').innerHTML = ''; return; }
-  const extra = { minutes: minutesHTML, agreements: agreementsHTML, wikinew: wikiNewHTML, calc: calcHTML, banner: bannerFormHTML, exam: examFormHTML, day: dayHTML, matimport: matImportHTML }[m];
+  const extra = { minutes: minutesHTML, agreements: agreementsHTML, wikinew: wikiNewHTML, calc: calcHTML, banner: bannerFormHTML, exam: examFormHTML, day: dayHTML, matimport: matImportHTML, docs: docsHTML, budget: budgetHTML, memoria: memoriaHTML, decnew: decNewHTML, deck: deckOptsHTML }[m];
   const html = extra ? extra() : m === 'task' ? taskHTML() : m === 'members' ? membersHTML() : m === 'summary' ? summaryHTML() : m === 'keys' ? keysHTML() : m === 'profile' ? profileHTML()
              : projectFormHTML(m === 'project-edit' ? proj() : null);
   if (!html) { S.modal = null; $('#modal').innerHTML = ''; return; }

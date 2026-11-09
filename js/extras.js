@@ -34,6 +34,7 @@ function palItems(){
   add('calendar-range', 'Calendario de clase', '', () => go('week'));
   add('clock', 'Horario', '', () => go('timetable'));
   add('pin', 'Tablón de clase', '', () => go('tablon'));
+  if (S.pid) { add('file-text', 'Documentos del proyecto (memoria, presupuesto, presentación)', '', () => openModal('docs')); add('drafting-compass', 'Planos', '', () => go('plans')); add('scale', 'Decisiones', '', () => go('decide')); }
   add('book-open', 'Apuntes', '', () => go('apuntes'));
   add('sun', 'Mi plan de hoy', '', () => openDay(today()));
   if (isOwner()) add('user-check', 'Seguimiento', '', () => go('track'));

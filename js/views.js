@@ -366,11 +366,32 @@ function teamHTML(){
       <small class="mut">${x.done}/${x.total} hechas · ${fmtMin(x.mins)} · ${x.msgs} msj${x.late ? ` · <span style="color:var(--bad-t)">${x.late} vencidas</span>` : ''}</small></div>`).join('')}</div></div>`;
 }
 function filesHTML(){
-  const p = proj(), id = folderId(p.drive_url);
-  if (!id) return emptyState('folder', 'Sin carpeta de Drive', adminOf() ? 'Pega el enlace de una carpeta en «Ajustes» para ver aquí sus archivos.' : 'Este proyecto aún no tiene carpeta de Drive.');
+  const p = proj(), root = folderId(p.drive_url), subs = (p.drive_folders || []).filter(x => folderId(x.url));
+  if (!root) return emptyState('folder', 'Sin carpeta de Drive', adminOf() ? 'Pega el enlace de una carpeta en «Ajustes» para ver aquí sus archivos.' : 'Este proyecto aún no tiene carpeta de Drive.');
+  // Google abre las subcarpetas en otra pestaña; por eso se guardan como accesos directos que se abren aquí mismo
+  const cur = subs[S.dsub] ? subs[S.dsub] : null, id = cur ? folderId(cur.url) : root, E = adminOf();
   return `<div class="page" style="max-width:none;display:flex;flex-direction:column">
-    <p class="small mut" style="margin-top:0">Si no ves los archivos, la carpeta debe estar compartida como «Cualquier persona con el enlace». Para subir archivos: <a href="${esc(p.drive_url)}" target="_blank" rel="noopener">abrir en Drive</a>.</p>
+    <div class="row dfold" style="flex-wrap:wrap;margin-bottom:10px">
+      <button class="btn sm ${cur ? '' : 'on'}" onclick="S.dsub=null;render()">${ic('folder', 'sm')} Carpeta del proyecto</button>
+      ${subs.map((x, i) => `<span class="dsub ${S.dsub === i ? 'on' : ''}"><button class="btn sm ${S.dsub === i ? 'on' : ''}" onclick="S.dsub=${i};render()">${ic('folder-open', 'sm')} ${esc(x.name)}</button>${E ? `<button class="ico" title="Quitar este acceso" onclick="delSubfolder(${i})">${ic('x', 'sm')}</button>` : ''}</span>`).join('')}
+      ${E ? `<button class="btn ghost sm" onclick="addSubfolder()">${ic('folder-plus', 'sm')} Añadir subcarpeta</button>` : ''}
+      <span class="grow"></span><a class="btn sm" href="https://drive.google.com/drive/folders/${esc(id)}" target="_blank" rel="noopener">${ic('external-link', 'sm')} Abrir en Drive</a></div>
+    <p class="small mut" style="margin-top:0">${E ? 'Las subcarpetas que añadas aparecen arriba para entrar en ellas sin salir de la web. ' : ''}Si no ves los archivos, inicia sesión en Google en este navegador o pide acceso a la carpeta.</p>
     <iframe src="https://drive.google.com/embeddedfolderview?id=${encodeURIComponent(id)}#list" style="flex:1;min-height:65vh;border:1px solid var(--line);border-radius:12px;background:#fff" title="Archivos de Drive"></iframe></div>`;
+}
+async function addSubfolder(){
+  const url = prompt('Pega el enlace de la subcarpeta de Drive.\n\nPara copiarlo: en la lista de abajo pulsa la subcarpeta (se abre en otra pestaña) y copia la dirección de la barra del navegador.');
+  if (url == null) return;
+  if (!folderId(url)) return toast('Ese enlace no es de una carpeta de Drive', 'err');
+  const name = prompt('Nombre para mostrar', 'Subcarpeta'); if (!name?.trim()) return;
+  const p = proj(), list = [...(p.drive_folders || []), { name: name.trim().slice(0, 60), url: url.trim() }];
+  p.drive_folders = list; S.dsub = list.length - 1; render();
+  await q(sb.from('projects').update({ drive_folders: list }).eq('id', p.id));
+}
+async function delSubfolder(i){
+  const p = proj(); if (!confirm(`¿Quitar el acceso a «${p.drive_folders[i].name}»? (La carpeta de Drive no se borra)`)) return;
+  const list = p.drive_folders.filter((_, k) => k !== i); p.drive_folders = list; S.dsub = null; render();
+  await q(sb.from('projects').update({ drive_folders: list }).eq('id', p.id));
 }
 function actText(a){
   const d = a.details || {}, t = a.task_title ? `«${esc(a.task_title)}»` : '';

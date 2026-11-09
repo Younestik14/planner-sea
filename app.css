@@ -737,3 +737,4 @@ button.day-i{cursor:pointer}.day-i.check{cursor:pointer}.day-i .done{text-decora
 .sl-stats{display:flex;justify-content:space-around;margin:auto 0}.sl-stats div{text-align:center}.sl-stats b{display:block;font-size:9vh;color:var(--c)}.sl-stats span{font-size:2.8vh;color:#6b7280}
 .deck-nav{position:fixed;bottom:16px;right:16px;display:flex;gap:6px;align-items:center;background:#000a;color:#fff;border-radius:99px;padding:4px 10px;font:13px Inter,sans-serif;cursor:default}
 .deck-nav button{background:none;border:0;color:#fff;font-size:20px;cursor:pointer;padding:2px 8px}
+.dsub{display:inline-flex;align-items:center}.dfold .btn.on{background:var(--acc-bg);border-color:var(--acc);color:var(--txt)}

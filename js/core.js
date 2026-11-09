@@ -401,6 +401,7 @@ async function loadView(){
   if (S.view === 'track') await loadTrack();
 }
 async function go(view, opts = {}){
+  if (opts.pid && opts.pid !== S.pid) S.dsub = null;
   if (view === 'plans') S.planId = null; // la pestaña Planos vuelve siempre a la lista
   closeSide();
   S.view = view; S.sel.clear(); S.selMode = false; S.pop = null;

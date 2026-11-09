@@ -365,13 +365,6 @@ function teamHTML(){
       <div class="bars" style="width:${x.total / max * 100}%;min-width:4px">${x.done ? `<i style="width:${x.done / x.total * 100}%;background:var(--ok)"></i>` : ''}${x.open ? `<i style="width:${x.open / x.total * 100}%;background:var(--acc)"></i>` : ''}${x.late ? `<i style="width:${x.late / x.total * 100}%;background:var(--bad)"></i>` : ''}</div>
       <small class="mut">${x.done}/${x.total} hechas · ${fmtMin(x.mins)} · ${x.msgs} msj${x.late ? ` · <span style="color:var(--bad-t)">${x.late} vencidas</span>` : ''}</small></div>`).join('')}</div></div>`;
 }
-function filesHTML(){
-  const p = proj(), id = folderId(p.drive_url);
-  if (!id) return emptyState('folder', 'Sin carpeta de Drive', adminOf() ? 'Pega el enlace de una carpeta en «Ajustes» para ver aquí sus archivos.' : 'Este proyecto aún no tiene carpeta de Drive.');
-  return `<div class="page" style="max-width:none;display:flex;flex-direction:column">
-    <p class="small mut" style="margin-top:0">Si no ves los archivos, la carpeta debe estar compartida como «Cualquier persona con el enlace». Para subir archivos: <a href="${esc(p.drive_url)}" target="_blank" rel="noopener">abrir en Drive</a>.</p>
-    <iframe src="https://drive.google.com/embeddedfolderview?id=${encodeURIComponent(id)}#list" style="flex:1;min-height:65vh;border:1px solid var(--line);border-radius:12px;background:#fff" title="Archivos de Drive"></iframe></div>`;
-}
 function actText(a){
   const d = a.details || {}, t = a.task_title ? `«${esc(a.task_title)}»` : '';
   switch (a.action) {

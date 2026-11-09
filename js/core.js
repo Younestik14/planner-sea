@@ -399,7 +399,6 @@ async function loadView(){
   if (S.view === 'tablon') await loadClass();
   if (S.view === 'apuntes' || S.view === 'timetable') await loadNotes();
   if (S.view === 'track') await loadTrack();
-  if (S.view === 'files') loadDrive();
 }
 async function go(view, opts = {}){
   if (view === 'plans') S.planId = null; // la pestaña Planos vuelve siempre a la lista

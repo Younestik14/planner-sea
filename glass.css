@@ -1,0 +1,166 @@
+/* ===== Planner SEA · piel «aurora de taller» =====
+   Cristal sobre una aurora en movimiento lento: cian de arco eléctrico, violeta y el acento de cada uno.
+   Va después de app.css y solo redefine tokens y la piel; la estructura de las vistas no cambia. */
+:root{
+  --au1:#22d3ee;--au2:#8b5cf6;--au3:var(--acc);
+  --bg:#080a1a;--panel:rgba(24,28,58,.56);--panel2:rgba(255,255,255,.055);--hover:rgba(255,255,255,.085);
+  --line:rgba(255,255,255,.09);--line2:rgba(255,255,255,.17);
+  --txt:#eef0ff;--txt2:#cdd2ee;--mut:#99a0c6;
+  --glass-hi:inset 0 1px 0 rgba(255,255,255,.09);
+  --shadow:0 10px 30px -12px rgba(0,0,0,.55);--shadow-lg:0 30px 80px -20px rgba(0,0,0,.7);
+  --blur:blur(22px) saturate(160%);
+  --r:12px;--r-lg:20px;--ease:cubic-bezier(.2,.8,.2,1);--spring:cubic-bezier(.2,.9,.25,1.15);
+  --top:82px;
+}
+:root[data-theme=light]{
+  --au1:#67e8f9;--au2:#c4b5fd;
+  --bg:#eef0fa;--panel:rgba(255,255,255,.62);--panel2:rgba(255,255,255,.6);--hover:rgba(40,50,120,.06);
+  --line:rgba(30,40,100,.09);--line2:rgba(30,40,100,.16);
+  --txt:#14172b;--txt2:#363c5c;--mut:#646b8d;
+  --glass-hi:inset 0 1px 0 rgba(255,255,255,.9);
+  --shadow:0 10px 30px -14px rgba(40,50,120,.25);--shadow-lg:0 30px 80px -24px rgba(40,50,120,.35);
+}
+:root[data-contrast=high]{--panel:rgba(24,28,58,.9);--line:rgba(255,255,255,.3)}
+:root[data-theme=light][data-contrast=high]{--panel:rgba(255,255,255,.95);--line:rgba(20,30,80,.35)}
+
+html{background:var(--bg);scroll-padding-top:96px;scroll-padding-bottom:96px} /* que los saltos no queden bajo la cabecera o el dock */
+body{min-height:100vh;background:transparent} /* transparente: si no, el fondo del body tapa la aurora */
+h1,h2,.ph h2,.brand b,.kpi b,.empty-state h3,.mh h3{font-family:"Bricolage Grotesque",Inter,system-ui,sans-serif;letter-spacing:-.02em}
+.page h1{font-size:30px;font-weight:700;line-height:1.1}
+option{background:#151936;color:#eef0ff}
+:root[data-theme=light] option{background:#fff;color:#14172b}
+
+/* ---- aurora (fondo fijo, fuera del re-pintado) ---- */
+.aurora{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;background:var(--bg)}
+.aurora i{position:absolute;width:70vmax;height:70vmax;border-radius:50%;opacity:.5;mix-blend-mode:screen;
+  background:radial-gradient(closest-side,var(--c),transparent 72%);will-change:transform}
+.aurora i:nth-child(1){--c:var(--au1);left:-18vmax;top:-26vmax;animation:au1 38s var(--ease) infinite alternate}
+.aurora i:nth-child(2){--c:var(--au2);right:-24vmax;top:-10vmax;animation:au2 46s var(--ease) infinite alternate}
+.aurora i:nth-child(3){--c:var(--au3);left:20vmax;bottom:-40vmax;opacity:.32;animation:au3 52s var(--ease) infinite alternate}
+.aurora::after{content:"";position:absolute;inset:0;opacity:.035;
+  background-image:linear-gradient(var(--txt) 1px,transparent 1px),linear-gradient(90deg,var(--txt) 1px,transparent 1px);background-size:44px 44px}
+:root[data-theme=light] .aurora i{mix-blend-mode:multiply;opacity:.5}
+@keyframes au1{to{transform:translate(18vmax,14vmax) scale(1.15)}}
+@keyframes au2{to{transform:translate(-16vmax,20vmax) scale(.9)}}
+@keyframes au3{to{transform:translate(-14vmax,-18vmax) scale(1.2)}}
+/* encendido inicial: la única animación que no responde a una acción */
+.aurora{animation:ignite 1.6s var(--ease) both}
+@keyframes ignite{from{opacity:0;filter:brightness(2.2) saturate(1.6)}}
+
+/* ---- cristal ---- */
+.card-box,.col,.mod,.pal,.ctx,.menu,.np,.sr,.more-menu,header.top,aside.side,.bottomnav,.toast,.wk-col,.tt-c,.composer,.post,.dec,.boxc{
+  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur)}
+.card-box,.col,.mod,.pal,.ctx,.menu,.np,.sr,.more-menu,.toast,.boxc{background:var(--panel);border-color:var(--line);box-shadow:var(--shadow),var(--glass-hi)}
+.card-box{border-radius:var(--r-lg)}
+input,select,textarea{background:var(--panel2);border-color:var(--line);border-radius:11px}
+input:focus,select:focus,textarea:focus{border-color:color-mix(in srgb,var(--acc) 70%,var(--au1));box-shadow:0 0 0 4px var(--acc-bg),0 0 24px -6px var(--acc)}
+
+/* ---- botones ---- */
+.btn{border-radius:11px;background:var(--panel2);border-color:var(--line);transition:background .2s,border-color .2s,transform .15s var(--spring),box-shadow .2s}
+.btn:active,.ico:active,.nav:active{transform:scale(.96)}
+.btn.pri{background:linear-gradient(135deg,var(--acc),color-mix(in srgb,var(--acc) 55%,var(--au2)));border-color:transparent;
+  box-shadow:0 8px 22px -8px var(--acc),inset 0 1px 0 rgba(255,255,255,.25)}
+.btn.pri:hover{filter:none;box-shadow:0 10px 30px -6px var(--acc),inset 0 1px 0 rgba(255,255,255,.3)}
+.chip{background:var(--panel2);border-color:var(--line)}
+
+/* ---- cabecera flotante ---- */
+header.top{position:sticky;top:12px;margin:12px 12px 0;height:58px;border:1px solid var(--line);border-radius:20px;
+  background:var(--panel);box-shadow:var(--shadow),var(--glass-hi);z-index:12}
+.search input{border-radius:999px;padding-left:34px}
+.np,.menu{top:66px;border-radius:18px}
+.sr{border-radius:16px}
+
+/* ---- barra lateral: raíl de iconos que se despliega ---- */
+.layout{min-height:calc(100vh - var(--top))}
+aside.side{position:fixed;left:12px;top:var(--top);bottom:12px;height:auto;width:68px;padding:10px 8px;z-index:11;
+  border:1px solid var(--line);border-radius:22px;background:var(--panel);box-shadow:var(--shadow),var(--glass-hi);
+  overflow-x:hidden;overflow-y:auto;scrollbar-width:none;transition:width .32s var(--ease),box-shadow .32s}
+aside.side::-webkit-scrollbar{display:none}
+main{margin-left:92px;padding-bottom:12px;transition:margin-left .32s var(--ease)}
+body.side-off aside.side{display:flex}
+@media(min-width:861px){
+/* plegado: solo iconos */
+body:not(.rail-pin) aside.side:not(.open) .nav{font-size:0;justify-content:center;padding:11px 0}
+body:not(.rail-pin) aside.side:not(.open) .nav .ic{width:20px;height:20px}
+body:not(.rail-pin) aside.side:not(.open) :is(.cnt,.badge,.pj .bar,.pj small,.pj .n span:not(.semoji),.side-foot){display:none}
+body:not(.rail-pin) aside.side:not(.open) h4{font-size:0;height:1px;margin:10px 8px;background:var(--line);padding:0;overflow:hidden}
+body:not(.rail-pin) aside.side:not(.open) .pj{padding:9px 0;display:grid;place-items:center}
+body:not(.rail-pin) aside.side:not(.open) .pj .n i.dot{width:14px;height:14px;border-radius:5px;box-shadow:0 0 12px var(--c)}
+}
+/* desplegado al pasar el ratón (por encima del contenido) o fijado */
+aside.side.open,body.rail-pin aside.side{width:272px}
+aside.side.open{box-shadow:var(--shadow-lg),var(--glass-hi)}
+body.rail-pin main{margin-left:296px}
+.nav{border-radius:12px;white-space:nowrap;transition:background .2s,color .2s,transform .15s var(--spring)}
+.nav.on{background:linear-gradient(90deg,var(--acc-bg),transparent);color:var(--txt);box-shadow:inset 3px 0 0 var(--acc)}
+.nav.on .ic{color:var(--acc2);filter:drop-shadow(0 0 6px var(--acc))}
+.pj{border-radius:12px;white-space:nowrap}
+.pj.on{background:var(--hover);box-shadow:inset 3px 0 0 var(--c)}
+.side h4{white-space:nowrap}
+
+/* ---- pestañas del proyecto ---- */
+.tabs{top:var(--top);margin:12px 12px 0 0;padding:6px;border:1px solid var(--line);border-radius:16px;background:var(--panel);
+  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);box-shadow:var(--shadow),var(--glass-hi);gap:4px;align-items:center}
+.tab{border:0;border-radius:11px;padding:8px 12px;transition:background .2s,color .2s}
+.tab:hover{background:var(--hover)}
+.tab.on{background:color-mix(in srgb,var(--c,var(--acc)) 22%,transparent);color:var(--txt);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--c,var(--acc)) 45%,transparent)}
+.tools{padding-bottom:0}
+.ph{padding:22px 12px 0 0}
+.page{padding:24px 12px 24px 0;max-width:1240px}
+.board{padding:16px 12px 16px 0}
+.ph.has-cover{margin-right:12px;border-radius:24px}
+
+/* ---- tablero ---- */
+.col{border-radius:20px}
+.card{background:color-mix(in srgb,var(--panel) 70%,transparent);border-color:var(--line);border-radius:14px;
+  transition:transform .22s var(--spring),box-shadow .22s,border-color .2s}
+.card:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--p,var(--acc)) 45%,var(--line));
+  box-shadow:0 14px 30px -14px color-mix(in srgb,var(--p,var(--acc)) 70%,transparent)}
+
+/* ---- tarjetas de inicio, KPI, proyectos ---- */
+.kpi{transition:transform .22s var(--spring),box-shadow .22s}
+.kpi:hover{transform:translateY(-2px);box-shadow:0 16px 36px -16px var(--acc),var(--glass-hi)}
+.kpi b{font-size:34px}
+
+/* ---- ventanas ---- */
+.ov{background:rgba(5,6,18,.45);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);animation:ovIn .25s var(--ease)}
+:root[data-theme=light] .ov{background:rgba(40,50,120,.18)}
+.mod{border-radius:24px;animation:modIn .38s var(--spring)}
+.mh{border-bottom-color:var(--line)}
+@keyframes ovIn{from{opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}}
+@keyframes modIn{from{opacity:0;transform:translateY(18px) scale(.96)}}
+.menu,.np,.sr,.more-menu,.ctx{animation:popIn .22s var(--spring);transform-origin:top right}
+@keyframes popIn{from{opacity:0;transform:translateY(-6px) scale(.97)}}
+
+/* ---- avisos ---- */
+.toast{border-radius:16px;border-left-width:1px;box-shadow:var(--shadow-lg),inset 3px 0 0 var(--acc);animation:toastIn .45s var(--spring)}
+.toast.err{box-shadow:var(--shadow-lg),inset 3px 0 0 var(--bad)}
+@keyframes toastIn{from{opacity:0;transform:translateX(40px) scale(.95)}}
+
+/* ---- calendario, horario ---- */
+.cal .dc{transition:background .2s}
+.wk-col{background:var(--panel);border-radius:18px}
+.tt-c{border-radius:14px}
+
+/* ---- móvil: cajón lateral y dock flotante ---- */
+@media(max-width:860px){
+  :root{--top:76px}
+  header.top{margin:8px 8px 0;top:8px;border-radius:18px}
+  main{margin-left:0!important;padding-bottom:96px}
+  aside.side{z-index:18;left:8px;top:var(--top);bottom:96px;width:min(300px,calc(100vw - 16px))!important;transform:translateX(calc(-100% - 20px));transition:transform .35s var(--spring)}
+  aside.side .nav{font-size:14px!important}
+  body.side-open aside.side{transform:none}
+  body.side-open .scrim{inset:0;background:rgba(5,6,18,.4);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+  .page,.ph,.diary,.hist,.gantt{padding-left:14px!important;padding-right:14px!important}
+  .tabs{margin:10px 8px 0;top:var(--top)}
+  .board{padding:14px}
+  .bottomnav{left:10px;right:10px;bottom:10px;height:64px;border:1px solid var(--line);border-radius:22px;background:var(--panel);box-shadow:var(--shadow-lg),var(--glass-hi)}
+  .bottomnav button{border-radius:16px;margin:6px 2px;transition:background .2s,color .2s,transform .15s var(--spring)}
+  .bottomnav button.on{background:var(--acc-bg)}
+  .bottomnav button.on .ic{filter:drop-shadow(0 0 6px var(--acc))}
+  #toasts{bottom:88px}
+  .mod{border-radius:0}
+}
+@media(prefers-reduced-motion:reduce){.aurora i{animation:none}.card:hover,.kpi:hover{transform:none}}
+@media print{.aurora{display:none}main{margin:0!important}}
+

@@ -5,10 +5,11 @@ function render(){
   const unread = S.notifs.filter(n => !n.read).length;
   const pending = S.profiles.filter(p => !p.approved && !p.is_admin).length;
   document.title = (unread ? `(${unread}) ` : '') + 'Planner SEA';
-  document.body.classList.toggle('side-off', !!ls('sideoff'));
+  document.body.classList.toggle('rail-pin', !!ls('railpin'));
+  const vkey = S.view + ':' + S.pid, changed = S._vkey && S._vkey !== vkey; S._vkey = vkey;
   $('#app').innerHTML = `
   <header class="top">
-    <button class="ico" onclick="toggleSide()" title="Mostrar u ocultar el menú" aria-label="Menú">${ic('panel-left', 'lg')}</button>
+    <button class="ico" onclick="toggleSide()" title="Fijar o plegar el menú" aria-label="Menú">${ic('panel-left', 'lg')}</button>
     ${brandHTML()}
     <div class="sp"></div>
     <div class="search">${ic('search')}<input id="sq" type="search" placeholder="Buscar tareas y mensajes…  ( / )" value="${esc(S.found?.q || '')}" oninput="clearTimeout(window._sq);window._sq=setTimeout(()=>doSearch(this.value),300)">
@@ -20,7 +21,7 @@ function render(){
     ${S.panel === 'menu' ? menuHTML() : ''}
   </header>
   <div class="layout">
-    <aside class="side">${sideHTML()}</aside><div class="scrim" onclick="closeSide()"></div>
+    <aside class="side ${S.railOpen ? 'open' : ''}">${sideHTML()}</aside><div class="scrim" onclick="closeSide()"></div>
     <main>${bannerHTML()}${mainHTML()}</main>
   </div>
   <nav class="bottomnav">
@@ -33,12 +34,27 @@ function render(){
   </nav>
   ${S.selMode && S.sel.size ? bulkBarHTML() : ''}`;
   icons();
+  // al cambiar de pantalla, el contenido entra con un fundido corto (sin bloquear el pintado)
+  if (changed && !matchMedia('(prefers-reduced-motion: reduce)').matches) $('main')?.animate([{ opacity: 0, transform: 'translateY(10px) scale(.992)', filter: 'blur(4px)' }, { opacity: 1, transform: 'none', filter: 'blur(0)' }], { duration: 380, easing: 'cubic-bezier(.2,.8,.2,1)' });
 }
 function toggleSide(force){
   if (matchMedia('(max-width:860px)').matches) document.body.classList.toggle('side-open', force);
-  else { ls('sideoff', !ls('sideoff')); document.body.classList.toggle('side-off', !!ls('sideoff')); }
+  else { ls('railpin', !ls('railpin')); document.body.classList.toggle('rail-pin', !!ls('railpin')); }
 }
-function closeSide(){ document.body.classList.remove('side-open'); }
+function closeSide(){ document.body.classList.remove('side-open'); clearTimeout(railT); railT = null; railOpen(false); S.railRest = true; }
+// raíl del menú (escritorio): se despliega al entrar con el ratón o el teclado y se pliega al salir o al elegir una opción
+function railOpen(on){ S.railOpen = on; document.querySelector('aside.side')?.classList.toggle('open', on); }
+let railT;
+// se decide por la posición del puntero (no por el elemento), porque el raíl se vuelve a pintar bajo el ratón
+document.addEventListener('mousemove', e => {
+  if (ls('railpin') || matchMedia('(max-width:860px)').matches) return;
+  const r = document.querySelector('aside.side')?.getBoundingClientRect(), inRail = r && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+  if (!inRail) { S.railRest = false; clearTimeout(railT); railT = null; if (S.railOpen) railOpen(false); return; }
+  if (!S.railOpen && !S.railRest && !railT) railT = setTimeout(() => { railT = null; if (!S.railRest) railOpen(true); }, 140);
+});
+document.addEventListener('focusin', e => { if (!S.railRest && e.target.matches?.(':focus-visible') && e.target.closest?.('aside.side') && !matchMedia('(max-width:860px)').matches) railOpen(true); });
+document.addEventListener('keydown', e => { if (e.key === 'Tab') S.railRest = false; });
+document.addEventListener('focusout', e => { if (e.target.closest?.('aside.side') && !e.relatedTarget?.closest?.('aside.side')) railOpen(false); });
 
 function menuHTML(){
   const light = document.documentElement.dataset.theme === 'light';
@@ -56,13 +72,13 @@ function menuHTML(){
 }
 function setTheme(t){ document.documentElement.dataset.theme = t; ls('theme', t); render(); }
 
-const nav = (v, icon, label, extra = '') => `<button class="nav ${S.view === v ? 'on' : ''}" onclick="go('${v}')">${ic(icon)} ${label}${extra ? ' ' + extra : ''}</button>`;
+const nav = (v, icon, label, extra = '') => `<button class="nav ${S.view === v ? 'on' : ''}" title="${label}" onclick="go('${v}')">${ic(icon)} ${label}${extra ? ' ' + extra : ''}</button>`;
 function sideHTML(){
   const act = S.projects.filter(p => !p.is_template && !p.archived), arch = S.projects.filter(p => !p.is_template && p.archived);
   const tpl = S.projects.filter(p => p.is_template);
   const pv = PVIEWS.some(v => v[0] === S.view);
   const pj = p => { const tot = p.tasks.length, done = p.tasks.filter(t => t.status === 'completada').length;
-    return `<button class="pj ${p.id === S.pid && pv ? 'on' : ''}" style="--c:${esc(p.color)}" onclick="goProject('${p.id}')">
+    return `<button class="pj ${p.id === S.pid && pv ? 'on' : ''}" style="--c:${esc(p.color)}" title="${esc(p.name)}" onclick="goProject('${p.id}')">
       <div class="n">${p.emoji ? `<span class="semoji">${esc(p.emoji)}</span>` : '<i class="dot"></i>'}<span>${esc(p.name)}</span>${adminOf(p.id) && !isOwner() ? '<span class="badge" style="margin-left:auto">Admin</span>' : ''}</div>
       <div class="bar"><i style="width:${tot ? done / tot * 100 : 0}%"></i></div>
       <small class="mut">${done}/${tot} tareas${p.due_date && !p.archived ? ` · entrega ${fmtD(p.due_date)}` : ''}</small></button>`; };
@@ -86,7 +102,7 @@ function sideHTML(){
       <button class="nav ${S.view === 'audit' ? 'on' : ''}" onclick="go('audit')">${ic('scroll-text')} Registro</button>
       <button class="nav" onclick="openModal('banner')">${ic('megaphone')} Anuncio general${bannerActive() ? ' <span class="cnt">activo</span>' : ''}</button>` : ''}
     <div style="flex:1"></div>
-    <p class="mut small" style="padding:10px;margin:0">${SCHOOL}</p>`;
+    <p class="mut small side-foot" style="padding:10px;margin:0">${SCHOOL}</p>`;
 }
 
 function mainHTML(){

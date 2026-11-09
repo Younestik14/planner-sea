@@ -10,7 +10,7 @@
   --shadow:0 10px 30px -12px rgba(0,0,0,.55);--shadow-lg:0 30px 80px -20px rgba(0,0,0,.7);
   --blur:blur(22px) saturate(160%);
   --r:12px;--r-lg:20px;--ease:cubic-bezier(.2,.8,.2,1);--spring:cubic-bezier(.2,.9,.25,1.15);
-  --top:82px;
+  --top:82px;--panel-solid:rgba(22,26,56,.86);
 }
 :root[data-theme=light]{
   --au1:#67e8f9;--au2:#c4b5fd;
@@ -18,7 +18,7 @@
   --line:rgba(30,40,100,.09);--line2:rgba(30,40,100,.16);
   --txt:#14172b;--txt2:#363c5c;--mut:#646b8d;
   --glass-hi:inset 0 1px 0 rgba(255,255,255,.9);
-  --shadow:0 10px 30px -14px rgba(40,50,120,.25);--shadow-lg:0 30px 80px -24px rgba(40,50,120,.35);
+  --shadow:0 10px 30px -14px rgba(40,50,120,.25);--shadow-lg:0 30px 80px -24px rgba(40,50,120,.35);--panel-solid:rgba(255,255,255,.86);
 }
 :root[data-contrast=high]{--panel:rgba(24,28,58,.9);--line:rgba(255,255,255,.3)}
 :root[data-theme=light][data-contrast=high]{--panel:rgba(255,255,255,.95);--line:rgba(20,30,80,.35)}
@@ -34,9 +34,9 @@ option{background:#151936;color:#eef0ff}
 .aurora{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;background:var(--bg)}
 .aurora i{position:absolute;width:70vmax;height:70vmax;border-radius:50%;opacity:.5;mix-blend-mode:screen;
   background:radial-gradient(closest-side,var(--c),transparent 72%);will-change:transform}
-.aurora i:nth-child(1){--c:var(--au1);left:-18vmax;top:-26vmax;animation:au1 38s var(--ease) infinite alternate}
-.aurora i:nth-child(2){--c:var(--au2);right:-24vmax;top:-10vmax;animation:au2 46s var(--ease) infinite alternate}
-.aurora i:nth-child(3){--c:var(--au3);left:20vmax;bottom:-40vmax;opacity:.32;animation:au3 52s var(--ease) infinite alternate}
+.aurora i:nth-child(1){--c:var(--au1);left:-18vmax;top:-26vmax}
+.aurora i:nth-child(2){--c:var(--au2);right:-24vmax;top:-10vmax}
+.aurora i:nth-child(3){--c:var(--au3);left:20vmax;bottom:-40vmax;opacity:.32}
 .aurora::after{content:"";position:absolute;inset:0;opacity:.035;
   background-image:linear-gradient(var(--txt) 1px,transparent 1px),linear-gradient(90deg,var(--txt) 1px,transparent 1px);background-size:44px 44px}
 :root[data-theme=light] .aurora i{mix-blend-mode:multiply;opacity:.5}
@@ -48,9 +48,10 @@ option{background:#151936;color:#eef0ff}
 @keyframes ignite{from{opacity:0;filter:brightness(2.2) saturate(1.6)}}
 
 /* ---- cristal ---- */
-.card-box,.col,.mod,.pal,.ctx,.menu,.np,.sr,.more-menu,header.top,aside.side,.bottomnav,.toast,.wk-col,.tt-c,.composer,.post,.dec,.boxc{
+.mod,.pal,.ctx,.menu,.np,.sr,.more-menu,header.top,aside.side,.bottomnav,.toast,.boxc{
   -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur)}
-.card-box,.col,.mod,.pal,.ctx,.menu,.np,.sr,.more-menu,.toast,.boxc{background:var(--panel);border-color:var(--line);box-shadow:var(--shadow),var(--glass-hi)}
+.mod,.pal,.ctx,.menu,.np,.sr,.more-menu,.toast,.boxc{background:var(--panel);border-color:var(--line);box-shadow:var(--shadow),var(--glass-hi)}
+.card-box,.col,.wk-col{background:var(--panel-solid);border-color:var(--line);box-shadow:var(--shadow),var(--glass-hi)}
 .card-box{border-radius:var(--r-lg)}
 input,select,textarea{background:var(--panel2);border-color:var(--line);border-radius:11px}
 input:focus,select:focus,textarea:focus{border-color:color-mix(in srgb,var(--acc) 70%,var(--au1));box-shadow:0 0 0 4px var(--acc-bg),0 0 24px -6px var(--acc)}
@@ -139,7 +140,7 @@ body.rail-pin main{margin-left:296px}
 
 /* ---- calendario, horario ---- */
 .cal .dc{transition:background .2s}
-.wk-col{background:var(--panel);border-radius:18px}
+.wk-col{border-radius:18px}
 .tt-c{border-radius:14px}
 
 /* ---- móvil: cajón lateral y dock flotante ---- */

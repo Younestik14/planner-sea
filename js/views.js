@@ -96,12 +96,13 @@ function colTasks(bid){
     person: (x, y) => (x.task_assignees[0] ? pname(x.task_assignees[0].user_id) : '~').localeCompare(y.task_assignees[0] ? pname(y.task_assignees[0].user_id) : '~'),
     votes: (x, y) => votesOf(y.id).length - votesOf(x.id).length,
   }[S.sort] || ((x, y) => x.position - y.position);
-  return S.tasks.filter(t => (t.bucket_id || null) === bid && !S.hidden.has(t.id)
+  const st = typeof bid === 'string' && bid.startsWith('st:') ? bid.slice(3) : null;
+  return S.tasks.filter(t => (st ? stOf(t) === st : (t.bucket_id || null) === bid) && !S.hidden.has(t.id) && partFilterOk(t)
       && (!S.onlyMine || t.task_assignees.some(a => a.user_id === S.me.id)) && (!S.label || (t.labels || []).includes(S.label)))
-    .sort((x, y) => (x.status === 'completada') - (y.status === 'completada') || cmp(x, y) || x.position - y.position);
+    .sort((x, y) => (st ? 0 : (x.status === 'completada') - (y.status === 'completada')) || cmp(x, y) || x.position - y.position);
 }
 const visibleBuckets = () => S.buckets.filter(b => !S.hidden.has(b.id));
-const boardOrder = () => [...visibleBuckets().map(b => b.id), null].flatMap(colTasks);
+const boardOrder = () => (stMode() ? STC.map(c => 'st:' + c[0]) : [...visibleBuckets().map(b => b.id), null]).flatMap(colTasks);
 const depsOf = t => S.deps.filter(d => d.task_id === t.id).map(d => S.tasks.find(x => x.id === d.depends_on)).filter(Boolean);
 const blockers = t => t.status === 'completada' ? [] : depsOf(t).filter(x => x.status !== 'completada');
 const minutesOf = tid => S.tlogs.filter(l => l.task_id === tid).reduce((a, l) => a + l.minutes, 0);
@@ -120,8 +121,9 @@ function boardHTML(){
       <div class="cards">${ts.map(cardHTML).join('') || '<div class="empty">Sin tareas</div>'}</div>
     </section>`;
   };
+  if (stMode()) return `${sessionPanelHTML()}<div class="board stboard ${S.compact ? 'compact' : ''}">${STC.map(stColHTML).join('')}</div>`;
   if (!S.buckets.length && !S.tasks.length) return `<div class="board">${E ? `<button class="addcol" onclick="addBucket()">${ic('plus')} Agregar columna</button>` : emptyState('square-kanban', 'Tablero vacío')}</div>`;
-  return `<div class="board ${S.compact ? 'compact' : ''}">${visibleBuckets().map(col).join('')}${col(null)}
+  return `${sessionPanelHTML()}<div class="board ${S.compact ? 'compact' : ''}">${visibleBuckets().map(col).join('')}${col(null)}
     ${E ? `<button class="addcol" onclick="addBucket()">${ic('plus')} Agregar columna</button>` : ''}</div>`;
 }
 function unreadOf(t){ const r = new Date(S.reads[t.id] || 0); return (t.comments || []).filter(c => c.user_id !== S.me.id && new Date(c.created_at) > r).length; }
@@ -131,12 +133,13 @@ function cardHTML(t){
   const sel = S.selMode && E, on = S.sel.has(t.id), pop = S.pop?.tid === t.id ? S.pop.kind : null;
   const assigned = new Set(t.task_assignees.map(a => a.user_id));
   const fl = S.flash === t.id; if (fl) setTimeout(() => { S.flash = null; }, 700);
-  return `<article class="card ${done ? 'done' : ''} ${on ? 'selected' : ''} ${fl ? 'flash' : ''}" style="--p:${p[1]}" draggable="${E && !sel}"
+  const pt = partOf(t.part_id), mp = t.is_merge && S.parts.length ? mergeProgress(t) : null, oi = openIssuesOf(t.id);
+  return `<article class="card ${done ? 'done' : ''} ${on ? 'selected' : ''} ${fl ? 'flash' : ''} ${pt ? 'has-part' : ''}" style="--p:${p[1]}${pt ? `;--pc:${esc(pt.color)}` : ''}" draggable="${E && !sel}"
       ondragstart="event.dataTransfer.setData('text/plain','${t.id}')" ${E && S.sort === 'manual' ? `ondragover="event.preventDefault()" ondrop="dropOnCard(event,'${t.id}')"` : ''}
       onclick="${sel ? `toggleSel('${t.id}')` : E ? `cardClick('${t.id}')` : `openTask('${t.id}')`}" oncontextmenu="cardMenu(event,'${t.id}')"
       onmouseenter="hoverCard(event,'${t.id}')" onmouseleave="hoverOff()">
     ${sel ? `<input type="checkbox" class="selbox" ${on ? 'checked' : ''} aria-label="Seleccionar">` : E ? `<button class="chk ${done ? 'on' : ''}" title="${done ? 'Reabrir' : 'Marcar como completada'}" onclick="event.stopPropagation();quickDone('${t.id}')">${done ? ic('check') : ''}</button>` : ''}
-    <div class="tags">${showField('prio') ? `<span class="prio">${p[0]}</span>` : ''}${t.status === 'en_curso' ? '<span class="st">En curso</span>' : ''}${bl ? `<span class="blk">${ic('lock', 'sm')} Bloqueada</span>` : ''}${t.review_requested && !done ? `<span class="rev">${ic('eye', 'sm')} Revisar</span>` : ''}${showField('labels') ? (t.labels || []).map(lblHTML).join('') : ''}</div>
+    <div class="tags">${pt ? partChip(pt.id) : ''}${showField('prio') ? `<span class="prio">${p[0]}</span>` : ''}${t.status === 'en_curso' && !stMode() ? '<span class="st">En curso</span>' : ''}${mp ? `<span class="chip ${mp[0] === mp[1] ? 'ok' : ''}">${ic('puzzle', 'sm')} ${mp[0]}/${mp[1]} partes</span>` : ''}${oi.length ? `<span class="chip bad">${ic('shield-alert', 'sm')} ${oi.length}</span>` : ''}${bl ? `<span class="blk">${ic('lock', 'sm')} Bloqueada</span>` : ''}${t.review_requested && !done ? `<span class="rev">${ic('eye', 'sm')} Revisar</span>` : ''}${showField('labels') ? (t.labels || []).map(lblHTML).join('') : ''}</div>
     <div class="ttl" ${E && !sel ? `ondblclick="event.stopPropagation();clearTimeout(window._ct);inlineRename(this,'${t.id}')" title="Doble clic para renombrar"` : ''}>${esc(t.title)}</div>
     <div class="meta">${showField('votes') ? voteBtn(t) : ''}${showField('due') ? dueChip(t) : ''}${showField('subtasks') && t.subtasks.length ? `<span>${ic('square-check', 'sm')} ${sd}/${t.subtasks.length}</span>` : ''}${nu ? `<span class="chip warn">${ic('message-square', 'sm')} ${nu} nuevo${nu > 1 ? 's' : ''}</span>` : cc && showField('comments') ? `<span>${ic('message-square', 'sm')} ${cc}</span>` : ''}${showField('hours') && mins ? `<span>${ic('clock', 'sm')} ${fmtMin(mins)}</span>` : ''}${okUrl(t.drive_url) ? `<span>${ic('folder', 'sm')}</span>` : ''}
       ${showField('avatars') ? `<span class="avs">${t.task_assignees.map(a => av(a.user_id)).join('')}</span>` : ''}</div>

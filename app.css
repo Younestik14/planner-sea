@@ -738,3 +738,33 @@ button.day-i{cursor:pointer}.day-i.check{cursor:pointer}.day-i .done{text-decora
 .deck-nav{position:fixed;bottom:16px;right:16px;display:flex;gap:6px;align-items:center;background:#000a;color:#fff;border-radius:99px;padding:4px 10px;font:13px Inter,sans-serif;cursor:default}
 .deck-nav button{background:none;border:0;color:#fff;font-size:20px;cursor:pointer;padding:2px 8px}
 .dsub{display:inline-flex;align-items:center}.dfold .btn.on{background:var(--acc-bg);border-color:var(--acc);color:var(--txt)}
+
+/* ---- tablero por estados ---- */
+.stcol .colh .sth{display:flex;gap:6px;align-items:center;color:var(--sc);font-weight:700}
+.stcol{border-top:3px solid var(--sc)}
+.stcol .colh .cnt{background:color-mix(in srgb,var(--sc) 18%,transparent);color:var(--sc)}
+/* ---- partes ---- */
+.pchip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:color-mix(in srgb,var(--c) 18%,transparent);color:color-mix(in srgb,var(--c) 75%,var(--txt));border:1px solid color-mix(in srgb,var(--c) 35%,transparent)}
+.card.has-part{box-shadow:inset 3px 0 0 var(--pc)}
+.pfilter{display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-right:auto}
+.pfb{border:1px solid var(--line);background:var(--panel2);color:var(--txt2);border-radius:99px;padding:4px 11px;font:inherit;font-size:12.5px;cursor:pointer}
+.pfb[style]{border-color:color-mix(in srgb,var(--c) 40%,var(--line))}
+.pfb.on{background:color-mix(in srgb,var(--c,var(--acc)) 25%,transparent);color:var(--txt);border-color:color-mix(in srgb,var(--c,var(--acc)) 70%,transparent)}
+.prow{padding:12px;margin-bottom:10px}.prow input[type=color]{width:42px;height:34px;padding:2px;flex:none}
+/* ---- juntar partes ---- */
+.merge{margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--panel2)}
+.mrow{display:flex;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line);flex-wrap:wrap}.mrow:first-of-type{border-top:0}
+.mrow .cellin{flex:1;min-width:160px}.mrow.ok .pchip::after{content:" ✓"}
+.review-b{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+/* ---- incidencias ---- */
+.iss{padding:14px 16px;margin-bottom:10px;cursor:pointer;border-left:4px solid var(--line)}
+.iss.sev-critica{border-left-color:#ef4444}.iss.sev-importante{border-left-color:#f59e0b}.iss.res{opacity:.6}
+.iss-d{margin:8px 0;color:var(--txt2);white-space:pre-line;font-size:14px}
+/* ---- planificación ---- */
+.miles{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}.miles div{flex:1;min-width:100px;padding:8px 10px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);display:flex;flex-direction:column}
+.miles b{font-size:15px}.miles span{font-size:12px;color:var(--mut)}.miles .end{border-color:var(--acc);background:var(--acc-bg)}
+/* ---- sesiones de taller ---- */
+.sess{margin:12px 12px 0 0;padding:0;overflow:hidden}.sess.today{border-color:color-mix(in srgb,var(--acc) 60%,var(--line))}
+.sess-h{display:flex;gap:8px;align-items:center;width:100%;padding:11px 14px;border:0;background:none;color:var(--txt);font:inherit;cursor:pointer;text-align:left;flex-wrap:wrap}
+.sess-b{padding:0 14px 12px}.ses-r{margin-bottom:8px}.ses-r select{max-width:140px}.ses-r input[type=time]{max-width:120px}
+@media(max-width:860px){.sess{margin:12px 14px 0}}

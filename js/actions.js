@@ -58,7 +58,8 @@ async function addTask(bid, el){
 async function createParsed(raw, bid, position){
   const x = parseQuick(raw);
   if (x.who.length || x.due || x.prio || x.labels.length) track('f:nl');
-  const [t] = await q(sb.from('tasks').insert({ project_id: S.pid, bucket_id: bid, title: x.title.slice(0, 300), position, priority: x.prio || 'media', due_date: x.due, labels: x.labels }).select());
+  const st = bid?.startsWith?.('st:') ? bid.slice(3) : null, pf = S.partF && S.partF !== 'mine' ? S.partF : null; // en el tablero por estados no hay columna: va a la primera
+  const [t] = await q(sb.from('tasks').insert({ project_id: S.pid, bucket_id: st ? S.buckets[0]?.id || null : bid, title: x.title.slice(0, 300), position, priority: x.prio || 'media', due_date: x.due, labels: x.labels, part_id: pf, ...(st ? stPatch(st) : {}) }).select());
   if (x.who.length) await q(sb.from('task_assignees').insert(x.who.map(u => ({ task_id: t.id, user_id: u }))));
 }
 async function pasteTasks(e, bid){
@@ -89,6 +90,7 @@ async function dropOnCol(e, bid){
     return q(sb.from('buckets').update({ position: pos }).eq('id', id));
   }
   const t = S.tasks.find(x => x.id === d);
+  if (t && bid?.startsWith('st:')) { const k = bid.slice(3); if (stOf(t) !== k) updateTask(t.id, stPatch(k), 'mover'); return; }
   if (t && t.bucket_id !== bid) moveTask(t, bid, Date.now());
 }
 async function dropOnCard(e, targetId){
@@ -96,6 +98,7 @@ async function dropOnCard(e, targetId){
   e.preventDefault(); e.stopPropagation(); e.currentTarget.closest('.col')?.classList.remove('over');
   const t = S.tasks.find(x => x.id === d), target = S.tasks.find(x => x.id === targetId);
   if (!t || !target || t.id === target.id) return;
+  if (stMode()) { const k = stOf(target); if (stOf(t) !== k) updateTask(t.id, { ...stPatch(k), position: target.position - 0.5 }, 'mover'); else updateTask(t.id, { position: target.position - 0.5 }, 'mover'); return; }
   const list = colTasks(target.bucket_id).filter(x => x.id !== t.id), i = list.findIndex(x => x.id === targetId);
   moveTask(t, target.bucket_id, i > 0 ? (list[i - 1].position + target.position) / 2 : target.position - 1); // queda encima de la tarjeta destino
 }

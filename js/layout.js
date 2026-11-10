@@ -119,7 +119,7 @@ function mainHTML(){
   if (S.view === 'usage') return usageHTML();
   const p = proj();
   if (!p) return emptyState('folder-kanban', 'No hay proyectos todavía', canCreate() ? 'Crea el primero con el botón + del menú.' : 'Cuando se cree uno, aparecerá aquí.');
-  const view = { material: materialHTML, deliv: delivHTML, plans: plansHTML, decide: decideHTML, board: boardHTML, list: listHTML, gantt: ganttHTML, cal: calHTML, diary: diaryHTML, wiki: wikiHTML, team: teamHTML, stats: statsHTML, files: filesHTML, trash: trashHTML }[S.view];
+  const view = { material: materialHTML, issues: issuesHTML, deliv: delivHTML, plans: plansHTML, decide: decideHTML, board: boardHTML, list: listHTML, gantt: ganttHTML, cal: calHTML, diary: diaryHTML, wiki: wikiHTML, team: teamHTML, stats: statsHTML, files: filesHTML, trash: trashHTML }[S.view];
   const anim = S._lastView !== S.view + S.pid && !reduceMotion(); S._lastView = S.view + S.pid;
   return projectHeaderHTML(p) + `<div class="${anim ? 'view-in' : ''}" style="display:contents">${view ? view() : `<div class="hist">${histHTML(S.activity, true)}</div>`}</div>`;
 }
@@ -136,7 +136,9 @@ function projectHeaderHTML(p){
     ${modChip(p.module)}${p.is_template ? '<span class="chip">Plantilla</span>' : ''}${p.archived ? '<span class="chip">Archivado</span>' : ''}${E && !isOwner() ? '<span class="badge">Eres admin</span>' : ''}
     <div class="acts">
       ${okUrl(p.drive_url) ? `<a class="btn" href="${esc(p.drive_url)}" target="_blank" rel="noopener">${ic('folder')} <span class="hide-m">Drive</span></a>` : ''}
+      <button class="btn" onclick="openModal('wa')" title="Resumen del proyecto para el grupo de WhatsApp">${ic('message-circle')} <span class="hide-m">WhatsApp</span></button>
       <button class="btn" onclick="openModal('docs')" title="Memoria técnica, presupuesto, presentación e informe">${ic('file-text')} <span class="hide-m">Documentos</span></button>
+      ${adminOf() ? `<button class="btn" onclick="openModal('org')" title="Partes, planificación, sesiones de taller y columnas">${ic('sliders-horizontal')} <span class="hide-m">Organizar</span></button>` : ''}
       <button class="btn" onclick="exportExcel()" title="Descargar en Excel">${ic('file-spreadsheet')} <span class="hide-m">Excel</span></button>
       ${E ? `<button class="btn" onclick="openModal('project-edit')">${ic('settings')} <span class="hide-m">Ajustes</span></button>` : ''}
     </div>
@@ -170,6 +172,7 @@ function toggleTab(k, on){ const v = new Set(pref('tabs', DEFAULT_TABS)); on ? v
 function boardToolsHTML(){
   const E = adminOf();
   return `<div class="tools">
+    ${partFilterHTML()}
     ${E ? `<button class="ico ${S.selMode ? 'on' : ''}" onclick="S.selMode=!S.selMode;S.sel.clear();render()" title="Seleccionar varias tareas">${ic('list-checks')}</button>` : ''}
     <button class="btn sm ${S.compact ? 'on' : ''}" onclick="S.compact=!S.compact;ls('compact',S.compact);render()" title="Tarjetas más pequeñas para ver más tareas">${ic(S.compact ? 'rows-3' : 'rows-2', 'sm')} ${S.compact ? 'Compacto' : 'Normal'}</button>
     <select onchange="S.sort=this.value;ls('sort',S.sort);render()" title="Ordenar tarjetas">
@@ -228,7 +231,7 @@ async function readAll(){ S.notifs.forEach(n => n.read = true); render(); await 
 function renderModal(){
   const m = S.modal;
   if (!m) { $('#modal').innerHTML = ''; return; }
-  const extra = { minutes: minutesHTML, agreements: agreementsHTML, wikinew: wikiNewHTML, calc: calcHTML, banner: bannerFormHTML, exam: examFormHTML, day: dayHTML, matimport: matImportHTML, docs: docsHTML, budget: budgetHTML, memoria: memoriaHTML, decnew: decNewHTML, deck: deckOptsHTML }[m];
+  const extra = { minutes: minutesHTML, agreements: agreementsHTML, wikinew: wikiNewHTML, calc: calcHTML, banner: bannerFormHTML, exam: examFormHTML, day: dayHTML, matimport: matImportHTML, docs: docsHTML, budget: budgetHTML, parts: partsModalHTML, issue: issueFormHTML, planner: plannerHTML, wa: waHTML, sessions: sessionsModalHTML, org: orgHTML, memoria: memoriaHTML, decnew: decNewHTML, deck: deckOptsHTML }[m];
   const html = extra ? extra() : m === 'task' ? taskHTML() : m === 'members' ? membersHTML() : m === 'summary' ? summaryHTML() : m === 'keys' ? keysHTML() : m === 'profile' ? profileHTML()
              : projectFormHTML(m === 'project-edit' ? proj() : null);
   if (!html) { S.modal = null; $('#modal').innerHTML = ''; return; }
@@ -261,11 +264,13 @@ function taskHTML(){
         ${E ? `<input id="f-title" class="ttitle" style="margin-top:14px" value="${esc(t.title)}" onchange="if(this.value.trim())saveTask({title:this.value.trim()})">`
             : `<h2 class="ttitle" style="margin:14px 0 0">${esc(t.title)}</h2><p class="small mut" style="margin:4px 0 0">Solo los admins del proyecto modifican la tarea. Tú puedes comentar, añadir subtareas y apuntar horas.</p>`}
         ${bl.length ? `<div class="banner bad">${ic('lock')} <div>Bloqueada: espera a que se complete ${bl.map(x => `<a href="#" onclick="event.preventDefault();openTask('${x.id}')">«${esc(x.title)}»</a>`).join(', ')}.</div></div>` : ''}
-        ${t.review_requested && E ? `<div class="banner warn">${ic('eye')} Un compañero ha terminado su parte: revísala y cambia el estado.</div>` : ''}
+        ${reviewHTML(t)}
+        ${openIssuesOf(t.id).map(i => `<div class="banner ${i.severity === 'critica' ? 'bad' : 'warn'}" style="cursor:pointer" onclick="closeModal();go('issues')">${ic('shield-alert')} Incidencia abierta: ${esc(i.title)}</div>`).join('')}
         <div class="grid4">
           <div><label>Estado</label><select ${dis} onchange="saveTask({status:this.value})">${opt(STATUS, t.status)}</select></div>
           <div><label>Prioridad</label><select ${dis} onchange="saveTask({priority:this.value})">${opt(PRIO, t.priority)}</select></div>
-          <div><label>Columna</label><select ${dis} onchange="saveTask({bucket_id:this.value||null})">
+          ${S.parts.length ? `<div><label>Parte</label><select ${dis} onchange="setTaskPart('${t.id}',this.value)"><option value="">—</option>${partsOf().map(p => `<option value="${p.id}" ${p.id === t.part_id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>` : ''}
+          <div ${stMode() ? 'hidden' : ''}><label>Columna</label><select ${dis} onchange="saveTask({bucket_id:this.value||null})">
             ${S.buckets.map(b => `<option value="${b.id}" ${b.id === t.bucket_id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}${!t.bucket_id ? '<option selected value="">Sin columna</option>' : ''}</select></div>
           <div><label>Fecha de inicio</label><input type="date" ${dis} value="${t.start_date || ''}" onchange="saveDates({start_date:this.value||null})"></div>
           <div><label>Fecha límite</label><input type="date" ${dis} value="${t.due_date || ''}" onchange="saveDates({due_date:this.value||null})"></div>
@@ -292,6 +297,7 @@ function taskHTML(){
         <label>Enlace a Drive</label>
         ${E ? `<input id="f-drive" placeholder="https://drive.google.com/…" value="${esc(t.drive_url)}" onchange="saveDrive(this.value)">` : ''}
         ${okUrl(t.drive_url) ? `<a class="btn" style="margin-top:6px" href="${esc(t.drive_url)}" target="_blank" rel="noopener">${ic('external-link')} Abrir carpeta o documento</a>` : (E ? '' : '<span class="mut">Sin enlace</span>')}
+        ${mergeHTML(t)}
         <label>Subtareas (${subs.filter(s => s.done).length}/${subs.length})</label>
         ${subs.map(s => `<div class="sub ${s.done ? 'd' : ''}"><input type="checkbox" ${s.done ? 'checked' : ''} onchange="q(sb.from('subtasks').update({done:this.checked}).eq('id','${s.id}'))">
           <span>${esc(s.title)}</span>${s.created_by && s.created_by !== S.me.id ? `<small>${esc(first(s.created_by))}</small>` : ''}

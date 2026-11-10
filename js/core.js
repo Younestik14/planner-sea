@@ -17,14 +17,14 @@ const PRANK = { urgente:0, importante:1, media:2, baja:3 };
 const STATUS = { no_iniciada:'No iniciada', en_curso:'En curso', completada:'Completada' };
 const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899','#a855f7','#84cc16'];
 const PVIEWS = [['board','Tablero','square-kanban'],['list','Lista','list'],['gantt','Cronograma','gantt-chart'],['cal','Calendario','calendar-days'],['diary','Diario','megaphone'],
-                ['wiki','Notas','notebook-pen'],['material','Material','package'],['deliv','Entregables','package-check'],['plans','Planos','drafting-compass'],['decide','Decisiones','scale'],['team','Equipo','users'],['stats','Estadísticas','chart-line'],['files','Archivos','folder'],['hist','Historial','history'],['trash','Papelera','trash-2']];
+                ['wiki','Notas','notebook-pen'],['material','Material','package'],['deliv','Entregables','package-check'],['issues','Incidencias','shield-alert'],['plans','Planos','drafting-compass'],['decide','Decisiones','scale'],['team','Equipo','users'],['stats','Estadísticas','chart-line'],['files','Archivos','folder'],['hist','Historial','history'],['trash','Papelera','trash-2']];
 const QUICK = ['Lo reviso hoy 👀', 'Hecho ✅', 'Subido a Drive 📁', '¿Alguien puede revisarlo?', 'Necesito ayuda con esto 🙋', 'Voy con retraso, lo termino mañana'];
 const REACT_POST = ['👍','✅','👀','❤️','🎉'], REACT_MSG = ['👍','✅','👀'];
 
 const S = { user:null, me:null, profiles:[], projects:[], padmins:[], notifs:[], mine:[], reads:{}, recent:[], review:[], weekMin:0,
   pid:null, tid:null, view:'home', uid:null, person:null,
   buckets:[], tasks:[], trash:[], activity:[], deps:[], tlogs:[], posts:[], preacts:[], votes:[], cdraft:[], tvotes:[], wiki:[], wid:null, wedit:null, revs:null, act84:[],
-  listSort:{ k:'due', d:1 }, listQ:'', qr:false, rsvps:[], materials:[], meetings:[], exams:[], pitems:[], priv:'', cposts:[], cvotes:[], creacts:[], notes:[], ndraft:{ title:'', url:'', blob:null, mod:null }, track:[], deliv:[], cweek:null, plans:[], marks:[], decisions:[], dscores:[],
+  listSort:{ k:'due', d:1 }, listQ:'', qr:false, rsvps:[], materials:[], meetings:[], exams:[], pitems:[], priv:'', cposts:[], cvotes:[], creacts:[], notes:[], ndraft:{ title:'', url:'', blob:null, mod:null }, track:[], deliv:[], cweek:null, plans:[], marks:[], decisions:[], dscores:[], parts:[], pmembers:[], contribs:[], issues:[], sitems:[], partF:null,
   comments:[], tact:[], subs:[], reacts:[],
   onlyMine:false, label:'', cal:null, found:null, sel:new Set(), selMode:false, pop:null, reply:null, hidden:new Set(),
   sort: ls('sort') || 'manual', compact: !!ls('compact'), panel:null, modal:null, seen:null, urls:{},
@@ -255,7 +255,7 @@ async function loadProject(){
   ]);
   const ids = t.map(x => x.id), pids = posts.map(x => x.id);
   const wids = wiki.map(w => w.id);
-  const [deps, tlogs, preacts, votes, tvotes, act84, wcom, materials, rsvps, deliv, plans, decisions] = await Promise.all([
+  const [deps, tlogs, preacts, votes, tvotes, act84, wcom, materials, rsvps, deliv, plans, decisions, parts, issues, sitems, contribs] = await Promise.all([
     ids.length ? q(sb.from('task_deps').select('*').in('task_id', ids)) : [],
     ids.length ? q(sb.from('time_logs').select('*').in('task_id', ids).order('logged_on', { ascending:false })) : [],
     pids.length ? q(sb.from('post_reactions').select('*').in('post_id', pids)) : [],
@@ -268,13 +268,19 @@ async function loadProject(){
     q(sb.from('deliverables').select('*').eq('project_id', S.pid).order('position')),
     q(sb.from('plans').select('*').eq('project_id', S.pid).order('created_at', { ascending:false })),
     q(sb.from('decisions').select('*').eq('project_id', S.pid).order('created_at')),
+    q(sb.from('project_parts').select('*').eq('project_id', S.pid).order('position')),
+    q(sb.from('issues').select('*').eq('project_id', S.pid).order('created_at', { ascending:false })),
+    q(sb.from('session_items').select('*').eq('project_id', S.pid).gte('day', addDays(today(), -14))),
+    ids.length ? q(sb.from('part_contribs').select('*').in('task_id', ids)) : [],
   ]);
-  const planIds = plans.map(p => p.id), decIds = decisions.map(d => d.id);
-  const [marks, dscores] = await Promise.all([
+  const planIds = plans.map(p => p.id), decIds = decisions.map(d => d.id), partIds = parts.map(p => p.id);
+  const [pmembers, marks, dscores] = await Promise.all([
+    partIds.length ? q(sb.from('part_members').select('*').in('part_id', partIds)) : [],
     planIds.length ? q(sb.from('plan_marks').select('*').in('plan_id', planIds).order('created_at')) : [],
     decIds.length ? q(sb.from('decision_scores').select('*').in('decision_id', decIds)) : [],
   ]);
-  Object.assign(S, { materials, rsvps, deliv, plans, marks, decisions, dscores });
+  Object.assign(S, { materials, rsvps, deliv, plans, marks, decisions, dscores, parts, issues, sitems, contribs, pmembers });
+  if (S.partF && S.partF !== 'mine' && !parts.some(p => p.id === S.partF)) S.partF = null;
   await signImages('planos', plans.flatMap(p => p.pages));
   S.wcom = wcom;
   Object.assign(S, { buckets:b, tasks: t.filter(x => !x.deleted_at), trash: t.filter(x => x.deleted_at), activity:a, posts, deps, tlogs, preacts, votes, tvotes, wiki, act84 });
@@ -331,6 +337,7 @@ function relProject(t, r){
   if ('comment_id' in r) return S.comments.some(x => x.id === r.comment_id);
   if ('plan_id' in r) return S.plans.some(x => x.id === r.plan_id);
   if ('decision_id' in r) return S.decisions.some(x => x.id === r.decision_id);
+  if ('part_id' in r && !('task_id' in r)) return S.parts.some(x => x.id === r.part_id);
   if (t === 'tasks' || t === 'posts') return [...S.tasks, ...S.trash, ...S.posts].some(x => x.id === r.id);
   return true; // borrados sin datos: mejor recargar
 }

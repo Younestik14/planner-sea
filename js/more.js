@@ -104,14 +104,16 @@ function todayHTML(){
   const plan = S.pitems.filter(x => x.day === td && x.kind === 'plan').sort((a, b) => a.position - b.position);
   const due = S.mine.filter(t => t.status !== 'completada' && t.due_date === td);
   const ents = S.projects.filter(p => p.due_date === td && !p.is_template && !p.archived);
+  const ses = S.projects.filter(p => !p.archived && !p.is_template).map(p => ({ p, s: nextSession(p) })).filter(x => x.s?.today);
   return `<div class="card-box today-c"><h3>${ic('sun')} Hoy <button class="btn ghost sm" style="margin-left:auto" onclick="openDay('${td}')">${ic('list-checks', 'sm')} Mi plan</button></h3>
     ${nowClassHTML().replace('card-box nowcls', 'nowcls')}
     ${sh.map(e => `<div class="today-i bad" onclick="editExam('${e.id}')">${ic(e.kind === 'event' ? 'calendar' : 'graduation-cap', 'sm')} <b>${e.exam_date === td ? 'Hoy' : 'Mañana'}:</b> ${esc(e.title)}</div>`).join('')}
+    ${ses.map(x => `<div class="today-i" onclick="goProject('${x.p.id}')">${ic('wrench', 'sm')} <b>Taller ${x.s.start}–${x.s.end}:</b> ${esc(x.p.name)}${x.s.place ? ' · ' + esc(x.s.place) : ''}</div>`).join('')}
     ${ents.map(p => `<div class="today-i bad" onclick="goProject('${p.id}')">${ic('flag', 'sm')} <b>Entrega hoy:</b> ${esc(p.name)}</div>`).join('')}
     ${due.map(t => `<div class="today-i" onclick="jump('${t.project_id}','${t.id}')">${ic('square-check', 'sm')} <b>Vence hoy:</b> ${esc(t.title)}</div>`).join('')}
     ${ev.map(x => `<div class="today-i">${ic('lock', 'sm')} ${x.at_time ? `<b>${x.at_time}</b> ` : ''}${esc(x.title)}</div>`).join('')}
     ${plan.map(x => `<label class="today-i check"><input type="checkbox" ${x.done ? 'checked' : ''} onchange="togglePItem('${x.id}',this.checked).then(render)"> <span class="${x.done ? 'done' : ''}">${esc(x.title)}</span></label>`).join('')}
-    ${!sh.length && !ents.length && !due.length && !ev.length && !plan.length ? `<p class="small mut" style="margin:6px 0 0">Nada apuntado para hoy. Pulsa «Mi plan» para organizarte el día.</p>` : ''}</div>`;
+    ${!sh.length && !ses.length && !ents.length && !due.length && !ev.length && !plan.length ? `<p class="small mut" style="margin:6px 0 0">Nada apuntado para hoy. Pulsa «Mi plan» para organizarte el día.</p>` : ''}</div>`;
 }
 
 /* ============ Avisos del navegador (con la web abierta en otra pestaña) ============ */

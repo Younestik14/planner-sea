@@ -14,16 +14,10 @@ function homeHTML(){
     <p class="mut" style="margin:0">${cap(new Date().toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' }))}</p>
     ${todayHTML()}
     ${favsHTML()}
-    <div class="kpis">
-      <div class="card-box kpi"><b>${open.length}</b><span>Tareas pendientes</span></div>
-      <div class="card-box kpi"><b style="color:${late.length ? 'var(--bad-t)' : 'inherit'}">${late.length}</b><span>Vencidas</span></div>
-      <div class="card-box kpi"><b>${week.length}</b><span>Vencen esta semana</span></div>
-      <div class="card-box kpi"><b>${fmtMin(S.weekMin)}</b><span>Dedicadas esta semana</span></div>
-    </div>
     <div class="hgrid">
       <div class="card-box"><h3>${ic('list-todo')} Tus próximas tareas <button class="btn ghost sm" style="margin-left:auto" onclick="go('mine')">Ver todas</button></h3>
+        ${review.length ? `<div class="sect" style="margin-top:0">Te toca revisar</div>${review.map(t => `<div class="mrow" onclick="jump('${t.project_id}','${t.id}')">${ic('eye')}<div class="t"><b>${esc(t.title)}</b><small class="mut">${esc(proj(t.project_id)?.name)}</small></div><span class="rev">Revisar</span></div>`).join('')}<div class="sect">Tus tareas</div>` : ''}
         ${soon.map(mineRow).join('') || emptyState('party-popper', 'Todo al día', 'No tienes tareas pendientes.')}
-        ${review.length ? `<div class="sect">Pendiente de revisar</div>${review.map(t => `<div class="mrow" onclick="jump('${t.project_id}','${t.id}')">${ic('eye')}<div class="t"><b>${esc(t.title)}</b><small class="mut">${esc(proj(t.project_id)?.name)}</small></div><span class="rev">Revisar</span></div>`).join('')}` : ''}
       </div>
       <div class="card-box">${(ms => ms.length ? `<h3>${ic('calendar-clock')} Próximas reuniones</h3>${ms.map(m => { const w = meetingWhen(m.meeting_at);
           return `<div class="mrow" onclick="goProject('${m.project_id}','diary')"><div class="meet-mini"><b>${w.time}</b><small>${w.rel}</small></div><div class="t"><b>${esc(proj(m.project_id)?.name || '')}</b><small class="mut">${esc(w.date)}${m.place ? ' · ' + esc(m.place) : ''}</small></div></div>`; }).join('')}<div style="height:12px"></div>` : '')(S.meetings.filter(m => new Date(m.meeting_at) > new Date()).slice(0, 3))}
@@ -31,6 +25,12 @@ function homeHTML(){
         ${S.recent.map(p => `<div class="pmini" onclick="goProject('${p.project_id}','diary')"><div class="row">${av(p.user_id)}<b class="small">${esc(pname(p.user_id))}</b><span class="small mut">· ${esc(proj(p.project_id)?.name)} · ${ago(p.created_at)}</span>${p.pinned ? ic('pin', 'sm') : ''}</div>
           <p>${esc(p.body || (p.poll_options ? '📊 Encuesta' : ''))}${p.images.length ? ` <span class="mut">· ${ic('image', 'sm')} ${p.images.length}</span>` : ''}</p></div>`).join('') || emptyState('megaphone', 'Sin publicaciones', 'Los admins publicarán aquí avisos y novedades.')}
       </div>
+    </div>
+    <div class="kpis kpis-lo">
+      <div class="card-box kpi"><b>${open.length}</b><span>Tareas pendientes</span></div>
+      <div class="card-box kpi"><b style="color:${late.length ? 'var(--bad-t)' : 'inherit'}">${late.length}</b><span>Vencidas</span></div>
+      <div class="card-box kpi"><b>${week.length}</b><span>Vencen esta semana</span></div>
+      <div class="card-box kpi"><b>${fmtMin(S.weekMin)}</b><span>Dedicadas esta semana</span></div>
     </div>
     <div class="sect">Proyectos activos</div>
     <div class="pcards">${act.map(p => { const tot = p.tasks.length, d = p.tasks.filter(t => t.status === 'completada').length;
@@ -139,7 +139,7 @@ function cardHTML(t){
       onclick="${sel ? `toggleSel('${t.id}')` : E ? `cardClick('${t.id}')` : `openTask('${t.id}')`}" oncontextmenu="cardMenu(event,'${t.id}')"
       onmouseenter="hoverCard(event,'${t.id}')" onmouseleave="hoverOff()">
     ${sel ? `<input type="checkbox" class="selbox" ${on ? 'checked' : ''} aria-label="Seleccionar">` : E ? `<button class="chk ${done ? 'on' : ''}" title="${done ? 'Reabrir' : 'Marcar como completada'}" onclick="event.stopPropagation();quickDone('${t.id}')">${done ? ic('check') : ''}</button>` : ''}
-    <div class="tags">${pt ? partChip(pt.id) : ''}${showField('prio') ? `<span class="prio">${p[0]}</span>` : ''}${t.status === 'en_curso' && !stMode() ? '<span class="st">En curso</span>' : ''}${mp ? `<span class="chip ${mp[0] === mp[1] ? 'ok' : ''}">${ic('puzzle', 'sm')} ${mp[0]}/${mp[1]} partes</span>` : ''}${oi.length ? `<span class="chip bad">${ic('shield-alert', 'sm')} ${oi.length}</span>` : ''}${bl ? `<span class="blk">${ic('lock', 'sm')} Bloqueada</span>` : ''}${t.review_requested && !done ? `<span class="rev">${ic('eye', 'sm')} Revisar</span>` : ''}${showField('labels') ? (t.labels || []).map(lblHTML).join('') : ''}</div>
+    <div class="tags">${pt ? partChip(pt.id) : ''}${showField('prio') ? `<span class="prio" title="Prioridad ${p[0].toLowerCase()}" aria-label="Prioridad ${p[0].toLowerCase()}"></span>` : ''}${t.status === 'en_curso' && !stMode() ? '<span class="st">En curso</span>' : ''}${mp ? `<span class="chip ${mp[0] === mp[1] ? 'ok' : ''}">${ic('puzzle', 'sm')} ${mp[0]}/${mp[1]} partes</span>` : ''}${oi.length ? `<span class="chip bad">${ic('shield-alert', 'sm')} ${oi.length}</span>` : ''}${bl ? `<span class="blk" title="Bloqueada: espera a otra tarea" aria-label="Bloqueada">${ic('lock', 'sm')}</span>` : ''}${t.review_requested && !done ? `<span class="rev" title="Pendiente de revisar" aria-label="Pendiente de revisar">${ic('eye', 'sm')}</span>` : ''}${showField('labels') ? (t.labels || []).map(lblHTML).join('') : ''}</div>
     <div class="ttl" ${E && !sel ? `ondblclick="event.stopPropagation();clearTimeout(window._ct);inlineRename(this,'${t.id}')" title="Doble clic para renombrar"` : ''}>${esc(t.title)}</div>
     <div class="meta">${showField('votes') ? voteBtn(t) : ''}${showField('due') ? dueChip(t) : ''}${showField('subtasks') && t.subtasks.length ? `<span>${ic('square-check', 'sm')} ${sd}/${t.subtasks.length}</span>` : ''}${nu ? `<span class="chip warn">${ic('message-square', 'sm')} ${nu} nuevo${nu > 1 ? 's' : ''}</span>` : cc && showField('comments') ? `<span>${ic('message-square', 'sm')} ${cc}</span>` : ''}${showField('hours') && mins ? `<span>${ic('clock', 'sm')} ${fmtMin(mins)}</span>` : ''}${okUrl(t.drive_url) ? `<span>${ic('folder', 'sm')}</span>` : ''}
       ${showField('avatars') ? `<span class="avs">${t.task_assignees.map(a => av(a.user_id)).join('')}</span>` : ''}</div>
@@ -359,9 +359,9 @@ function teamHTML(){
   const adm = adminsOf(S.pid);
   return `<div class="page">
     <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:6px"><b class="small">Admins del proyecto:</b>
-      ${S.profiles.filter(p => p.is_admin).map(p => `<span class="chip">${av(p.id)} ${esc(pname(p.id))} <span class="badge own">Propietario</span></span>`).join('')}
+      ${isPrivate() ? '' : S.profiles.filter(p => p.is_admin).map(p => `<span class="chip">${av(p.id)} ${esc(pname(p.id))} <span class="badge own">Propietario</span></span>`).join('')}
       ${adm.map(id => `<span class="chip">${av(id)} ${esc(pname(id))} <span class="badge">Admin</span></span>`).join('')}
-      ${isOwner() ? `<button class="btn sm ghost" onclick="openModal('project-edit')">${ic('shield', 'sm')} Gestionar</button>` : ''}</div>
+      ${adminOf() ? `<button class="btn sm ghost" onclick="openModal('project-edit')">${ic('shield', 'sm')} Gestionar</button>` : ''}</div>
     <p class="small mut"><span style="color:var(--ok)">■</span> completadas · <span style="color:var(--acc)">■</span> pendientes · <span style="color:var(--bad)">■</span> vencidas
       ${free ? ` · <b class="rev">${free} tareas pendientes sin asignar</b>` : ''} · Pulsa una persona para ver su perfil.</p>
     <div class="card-box" style="padding:6px 12px">${w.map(x => `<div class="wl" onclick="go('person',{uid:'${x.u.id}'})"><div class="row">${av(x.u.id, 'l')}<b>${esc(pname(x.u.id))}</b>${roleBadge(x.u.id, S.pid)}</div>

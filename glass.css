@@ -165,3 +165,35 @@ body.rail-pin main{margin-left:296px}
 @media(prefers-reduced-motion:reduce){.aurora i{animation:none}.card:hover,.kpi:hover{transform:none}}
 @media print{.aurora{display:none}main{margin:0!important}}
 
+
+/* ===== organización y lectura (nov 2026) ===== */
+/* texto algo mayor y gris secundario con más contraste */
+html,body{font-size:14.5px}
+.small,.chip,.meta,label,.kpi span,.cnt{font-size:12.5px}
+:root{--mut:#a9b0d2}
+:root[data-theme="light"]{--mut:#555c7d}
+/* el color del proyecto acompaña: columnas, pestaña activa, botón principal */
+main{--proj:var(--acc)}
+.col{border-top:3px solid color-mix(in srgb,var(--proj) 70%,transparent)}
+.tab.on{border-color:var(--proj)}
+.ph .btn.pri,.board .btn.pri{background:var(--proj);border-color:var(--proj)}
+/* pestañas por zonas */
+.tzone{display:contents}
+.tsep{width:1px;align-self:stretch;margin:8px 4px;background:var(--line);flex:none}
+/* una sola franja para sesión de taller y mensaje fijado */
+.strip{width:100%;display:flex;gap:8px;flex-wrap:wrap}
+.strip-i{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--txt2);font-size:13px;cursor:pointer;min-width:0}
+.strip-i .ell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.strip-i.hot{border-color:color-mix(in srgb,var(--proj) 60%,transparent);background:color-mix(in srgb,var(--proj) 14%,transparent);color:var(--txt)}
+/* tarjetas: prioridad como punto */
+.card .prio{gap:0}
+.card .prio::before{width:9px;height:9px}
+/* cifras de Inicio más discretas */
+.kpis-lo .kpi b{font-size:24px}
+.kpis-lo{margin-top:18px}
+/* móvil: columnas que se pasan con el dedo */
+@media(max-width:860px){
+  .board{scroll-snap-type:x mandatory;padding:12px 14px;gap:10px}
+  .board .col{width:86vw;scroll-snap-align:center}
+  .tsep{margin:8px 2px}
+}

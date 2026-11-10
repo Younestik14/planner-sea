@@ -22,7 +22,7 @@ function render(){
   </header>
   <div class="layout">
     <aside class="side ${S.railOpen ? 'open' : ''}">${sideHTML()}</aside><div class="scrim" onclick="closeSide()"></div>
-    <main>${bannerHTML()}${mainHTML()}</main>
+    <main style="${S.pid && PVIEWS.some(v => v[0] === S.view) && proj() ? `--proj:${esc(proj().color)}` : ''}">${bannerHTML()}${mainHTML()}</main>
   </div>
   <nav class="bottomnav">
     <button class="${S.view === 'home' ? 'on' : ''}" onclick="go('home')">${ic('house', 'lg')}Inicio</button>
@@ -79,7 +79,7 @@ function sideHTML(){
   const pv = PVIEWS.some(v => v[0] === S.view);
   const pj = p => { const tot = p.tasks.length, done = p.tasks.filter(t => t.status === 'completada').length;
     return `<button class="pj ${p.id === S.pid && pv ? 'on' : ''}" style="--c:${esc(p.color)}" title="${esc(p.name)}" onclick="goProject('${p.id}')">
-      <div class="n">${p.emoji ? `<span class="semoji">${esc(p.emoji)}</span>` : '<i class="dot"></i>'}<span>${esc(p.name)}</span>${adminOf(p.id) && !isOwner() ? '<span class="badge" style="margin-left:auto">Admin</span>' : ''}</div>
+      <div class="n">${p.emoji ? `<span class="semoji">${esc(p.emoji)}</span>` : '<i class="dot"></i>'}<span>${esc(p.name)}</span>${p.visibility === 'private' ? `<span title="Solo lo ve su grupo" style="opacity:.6;display:inline-flex">${ic('lock', 'sm')}</span>` : ''}${adminOf(p.id) && !isOwner() ? '<span class="badge" style="margin-left:auto">Admin</span>' : ''}</div>
       <div class="bar"><i style="width:${tot ? done / tot * 100 : 0}%"></i></div>
       <small class="mut">${done}/${tot} tareas${p.due_date && !p.archived ? ` · entrega ${fmtD(p.due_date)}` : ''}</small></button>`; };
   const openArch = !!ls('arch');
@@ -89,8 +89,8 @@ function sideHTML(){
     <h4>Clase</h4>
     ${nav('week', 'calendar-range', 'Calendario')}
     ${nav('timetable', 'clock', 'Horario')}
-    ${nav('tablon', 'pin', 'Tablón')}
-    ${nav('apuntes', 'book-open', 'Apuntes')}
+    ${S.used?.tablon || isOwner() || S.view === 'tablon' ? nav('tablon', 'pin', 'Tablón') : ''}
+    ${S.used?.apuntes || isOwner() || S.view === 'apuntes' ? nav('apuntes', 'book-open', 'Apuntes') : ''}
     <h4>Proyectos ${canCreate() ? `<button class="ico" title="Nuevo proyecto" onclick="openModal('project-new')">${ic('plus', 'sm')}</button>` : ''}</h4>
     ${act.map(pj).join('') || '<p class="mut small" style="padding:0 10px">Aún no hay proyectos activos</p>'}
     ${tpl.length && canCreate() ? `<h4>Plantillas</h4>${tpl.map(p => `<button class="pj ${p.id === S.pid && pv ? 'on' : ''}" style="--c:${esc(p.color)}" onclick="goProject('${p.id}')"><div class="n">${ic('layers', 'sm')}<span>${esc(p.name)}</span></div></button>`).join('')}` : ''}
@@ -133,14 +133,17 @@ function projectHeaderHTML(p){
   <div class="ph ${p.cover ? 'has-cover' : ''}" style="--c:${esc(p.color)};${p.cover ? `--cover:${esc(coverCss(p.cover))}` : ''}">
     <h2>${p.emoji ? `<span class="pemoji">${esc(p.emoji)}</span>` : '<i class="dot"></i>'}${esc(p.name)}</h2>
     <button class="ico" title="${isFav('p', p.id) ? 'Quitar de accesos directos' : 'Añadir a accesos directos de Inicio'}" onclick="toggleFav('p','${p.id}')">${ic('star', isFav('p', p.id) ? 'fav' : '')}</button>
-    ${modChip(p.module)}${p.is_template ? '<span class="chip">Plantilla</span>' : ''}${p.archived ? '<span class="chip">Archivado</span>' : ''}${E && !isOwner() ? '<span class="badge">Eres admin</span>' : ''}
+    ${modChip(p.module)}${p.is_template ? '<span class="chip">Plantilla</span>' : ''}${p.archived ? '<span class="chip">Archivado</span>' : ''}${p.visibility === 'private' ? `<span class="chip" title="Solo lo ven sus ${pmembersOf(p.id).length} miembros">${ic('lock', 'sm')} Grupo · ${pmembersOf(p.id).length}</span>` : ''}${E && (!isOwner() || p.visibility === 'private') ? '<span class="badge">Eres admin</span>' : ''}
     <div class="acts">
-      ${okUrl(p.drive_url) ? `<a class="btn" href="${esc(p.drive_url)}" target="_blank" rel="noopener">${ic('folder')} <span class="hide-m">Drive</span></a>` : ''}
       <button class="btn" onclick="openModal('wa')" title="Resumen del proyecto para el grupo de WhatsApp">${ic('message-circle')} <span class="hide-m">WhatsApp</span></button>
       <button class="btn" onclick="openModal('docs')" title="Memoria técnica, presupuesto, presentación e informe">${ic('file-text')} <span class="hide-m">Documentos</span></button>
-      ${adminOf() ? `<button class="btn" onclick="openModal('org')" title="Partes, planificación, sesiones de taller y columnas">${ic('sliders-horizontal')} <span class="hide-m">Organizar</span></button>` : ''}
-      <button class="btn" onclick="exportExcel()" title="Descargar en Excel">${ic('file-spreadsheet')} <span class="hide-m">Excel</span></button>
-      ${E ? `<button class="btn" onclick="openModal('project-edit')">${ic('settings')} <span class="hide-m">Ajustes</span></button>` : ''}
+      <div class="more-wrap"><button class="btn" title="Más opciones" aria-label="Más opciones" onclick="event.stopPropagation();togglePanel('pmenu')">${ic('ellipsis')}</button>
+        ${S.panel === 'pmenu' ? `<div class="menu more-menu" style="right:0;left:auto" onclick="event.stopPropagation()">
+          ${okUrl(p.drive_url) ? `<a href="${esc(p.drive_url)}" target="_blank" rel="noopener" onclick="S.panel=null">${ic('folder')} Abrir en Drive</a>` : ''}
+          ${E ? `<button onclick="S.panel=null;openModal('org')">${ic('sliders-horizontal')} Organizar (partes, plan, sesiones)</button>` : ''}
+          <button onclick="S.panel=null;exportExcel()">${ic('file-spreadsheet')} Descargar en Excel</button>
+          ${p.visibility === 'private' && !E ? `<button onclick="S.panel=null;openModal('group')">${ic('users')} Personas del grupo</button>` : ''}
+          ${E ? `<button onclick="S.panel=null;openModal('project-edit')">${ic('settings')} Ajustes${p.visibility === 'private' ? ' y personas' : ''}</button>` : ''}</div>` : ''}</div>
     </div>
     <div class="meta">
       <div class="bar" style="--c:${esc(p.color)}"><i style="width:${total ? done / total * 100 : 0}%"></i></div>
@@ -150,7 +153,7 @@ function projectHeaderHTML(p){
       ${riskChip(p, S.tasks)}
     </div>
     ${p.description ? `<p class="desc">${linkify(p.description)}</p>` : ''}
-    ${pin && S.view !== 'diary' ? `<div class="pinned" onclick="go('diary')">${ic('pin')}<div class="grow"><b>${esc(first(pin.user_id))}:</b> ${esc((pin.body || (pin.poll_options ? 'Encuesta' : 'Fotos')).slice(0, 160))}</div><span class="small mut">Ver diario →</span></div>` : ''}
+    ${stripHTML(pin)}
   </div>
   <div class="tabs" style="--c:${esc(p.color)}">
     ${tabsHTML(E)}
@@ -158,11 +161,24 @@ function projectHeaderHTML(p){
     ${S.view === 'board' ? boardToolsHTML() : ''}
   </div>`;
 }
+function stripHTML(pin){
+  const s = nextSession(), out = [];
+  if (s) { const it = S.sitems.filter(i => i.day === s.day), open = S.sesOpen ?? s.today;
+    out.push(`<button class="strip-i ${s.today ? 'hot' : ''}" aria-expanded="${open && S.view === 'board'}" onclick="S.sesOpen=${!(open && S.view === 'board')};S.view==='board'?render():go('board')">${ic('wrench', 'sm')} <b>${s.today ? 'Hoy' : cap(WD[+s.wd]) + ' ' + fmtD(s.day)}</b> ${s.start}–${s.end} · taller${it.length ? ` · ${it.filter(i => i.done).length}/${it.length}` : ''}</button>`); }
+  if (pin && S.view !== 'diary') out.push(`<button class="strip-i" onclick="go('diary')">${ic('pin', 'sm')} <b>${esc(first(pin.user_id))}:</b> <span class="ell">${esc((pin.body || (pin.poll_options ? 'Encuesta' : 'Fotos')).slice(0, 120))}</span></button>`);
+  return out.length ? `<div class="strip">${out.join('')}</div>` : '';
+}
+function groupModalHTML(){
+  const p = proj(); if (!p || p.visibility !== 'private') return '';
+  return `<div class="mod sm"><div class="mh"><h3>${ic('lock')} Personas del grupo</h3><button class="ico" onclick="closeModal()">${ic('x')}</button></div><div class="mb">
+    <p class="small mut" style="margin-top:0">Este proyecto solo lo ven estas personas.</p>${groupPeopleHTML(p)}</div></div>`;
+}
 function tabsHTML(E){
   const all = PVIEWS.filter(v => v[0] !== 'trash' || E), vis = pref('tabs', DEFAULT_TABS);
   const shown = all.filter(v => vis.includes(v[0]) || v[0] === S.view), more = all.filter(v => !shown.includes(v));
-  const tab = ([k, n, i]) => `<button class="tab ${S.view === k ? 'on' : ''}" onclick="go('${k}')">${ic(i)} ${n}${k === 'trash' && S.trash.length ? ` <span class="cnt">${S.trash.length}</span>` : ''}</button>`;
-  return shown.map(tab).join('') + `<div class="more-wrap"><button class="tab" onclick="event.stopPropagation();togglePanel('more')">${ic('ellipsis')} Más${more.length ? ` <span class="cnt">${more.length}</span>` : ''}</button>
+  const tab = ([k, n, i]) => `<button class="tab ${S.view === k ? 'on' : ''}" onclick="go('${k}')">${ic(i)} ${n}${k === 'trash' && S.trash.length ? ` <span class="cnt">${S.trash.length}</span>` : ''}${k === 'issues' && S.issues.some(x => x.status === 'abierta') ? ` <span class="cnt">${S.issues.filter(x => x.status === 'abierta').length}</span>` : ''}</button>`;
+  const zones = TAB_ZONES.map(([z, ks]) => [z, ks.map(k => shown.find(v => v[0] === k)).filter(Boolean)]).filter(z => z[1].length);
+  return zones.map(([z, vs], i) => `${i ? '<i class="tsep"></i>' : ''}<span class="tzone" title="${z}">${vs.map(tab).join('')}</span>`).join('') + `<div class="more-wrap"><button class="tab" onclick="event.stopPropagation();togglePanel('more')">${ic('ellipsis')} Más${more.length ? ` <span class="cnt">${more.length}</span>` : ''}</button>
     ${S.panel === 'more' ? `<div class="menu more-menu" onclick="event.stopPropagation()">${more.map(([k, n, i]) => `<button onclick="S.panel=null;go('${k}')">${ic(i)} ${n}</button>`).join('')}
       ${more.length ? '<hr>' : ''}<div class="small mut" style="padding:4px 10px">Pestañas visibles</div>
       ${all.map(([k, n]) => `<label class="chkrow"><input type="checkbox" ${vis.includes(k) ? 'checked' : ''} onchange="toggleTab('${k}',this.checked)"> ${n}</label>`).join('')}
@@ -231,7 +247,7 @@ async function readAll(){ S.notifs.forEach(n => n.read = true); render(); await 
 function renderModal(){
   const m = S.modal;
   if (!m) { $('#modal').innerHTML = ''; return; }
-  const extra = { minutes: minutesHTML, agreements: agreementsHTML, wikinew: wikiNewHTML, calc: calcHTML, banner: bannerFormHTML, exam: examFormHTML, day: dayHTML, matimport: matImportHTML, docs: docsHTML, budget: budgetHTML, parts: partsModalHTML, issue: issueFormHTML, planner: plannerHTML, wa: waHTML, sessions: sessionsModalHTML, org: orgHTML, memoria: memoriaHTML, decnew: decNewHTML, deck: deckOptsHTML }[m];
+  const extra = { minutes: minutesHTML, agreements: agreementsHTML, wikinew: wikiNewHTML, calc: calcHTML, banner: bannerFormHTML, exam: examFormHTML, day: dayHTML, matimport: matImportHTML, docs: docsHTML, budget: budgetHTML, parts: partsModalHTML, issue: issueFormHTML, planner: plannerHTML, wa: waHTML, sessions: sessionsModalHTML, org: orgHTML, group: groupModalHTML, memoria: memoriaHTML, decnew: decNewHTML, deck: deckOptsHTML }[m];
   const html = extra ? extra() : m === 'task' ? taskHTML() : m === 'members' ? membersHTML() : m === 'summary' ? summaryHTML() : m === 'keys' ? keysHTML() : m === 'profile' ? profileHTML()
              : projectFormHTML(m === 'project-edit' ? proj() : null);
   if (!html) { S.modal = null; $('#modal').innerHTML = ''; return; }
@@ -241,7 +257,7 @@ function renderModal(){
   if (m === 'calc') calcUpdate();
   icons();
 }
-function openModal(m){ S.modal = m; S.panel = null; closeSide(); render(); renderModal(); }
+function openModal(m){ if (m === 'project-new') S.newPriv = false; S.modal = m; S.panel = null; closeSide(); render(); renderModal(); }
 function closeModal(){ S.coverDraft = undefined; S.modal = null; S.tid = null; S.reply = null; S.cdraft = []; typingChannel(null); setHash(); renderModal(); render(); }
 
 function taskHTML(){
@@ -365,7 +381,9 @@ function projectFormHTML(p){
         ${['🛴','⚡','🔌','💡','🏭','🔧','🤖','📡','🚦','🔋','🏗️','📐','🧪','📊','🎓','🛠️'].map(e => `<button type="button" class="ico" style="font-size:18px" onclick="$('#p-emoji').value='${e}'">${e}</button>`).join('')}</div>
       ${coverPickHTML(p)}
       <label>Color</label><div class="pick">${COLORS.map(k => `<label class="${k === c ? 'on' : ''}" style="padding:3px"><input type="radio" name="pc" value="${k}" ${k === c ? 'checked' : ''} onchange="this.closest('.pick').querySelectorAll('label').forEach(l=>l.classList.toggle('on',l.contains(this)))"><span class="av" style="background:${k};margin:0"></span></label>`).join('')}</div>
-      ${p ? `<label>Administradores de este proyecto <small>(pueden editar todo el proyecto y publicar en su diario)</small></label>
+      ${visHTML(p)}
+      ${p && p.visibility === 'private' ? groupPeopleHTML(p) : ''}
+      ${p && p.visibility !== 'private' ? `<label>Administradores de este proyecto <small>(pueden editar todo el proyecto y publicar en su diario)</small></label>
         ${own ? `<div class="pick">${members().filter(u => !u.is_admin).map(u => `<label class="${adm.includes(u.id) ? 'on' : ''}"><input type="checkbox" ${adm.includes(u.id) ? 'checked' : ''} onchange="toggleProjectAdmin('${p.id}','${u.id}',this.checked)">${av(u.id)}${esc(pname(u.id))}</label>`).join('') || '<span class="mut">No hay miembros todavía</span>'}</div>`
               : `<div class="pick">${adm.map(id => `<label class="on">${av(id)}${esc(pname(id))}</label>`).join('')}</div><p class="small mut">Solo el propietario puede nombrar o quitar admins.</p>`}` : ''}
       <label class="row" style="color:var(--txt);margin-top:16px"><input id="p-tpl" type="checkbox" style="width:auto" ${p?.is_template ? 'checked' : ''}> Es una plantilla (no aparece entre los proyectos; sirve para copiarla)</label>
@@ -377,18 +395,62 @@ function projectFormHTML(p){
     </div></div>`;
 }
 
+/* ============ proyectos de grupo (solo los ven sus miembros) ============ */
+function visHTML(p){
+  const priv = p ? p.visibility === 'private' : S.newPriv;
+  return `<label>¿Quién lo ve?</label>
+    <div class="seg"><button type="button" class="${priv ? '' : 'on'}" onclick="setVis(false)">${ic('users', 'sm')} Toda la clase</button><button type="button" class="${priv ? 'on' : ''}" onclick="setVis(true)">${ic('lock', 'sm')} Solo un grupo</button></div>
+    ${!p && priv ? `<p class="small mut">Solo lo verán las personas que marques (y tú). Nadie más, ni el propietario de la web.</p>
+      <div class="pick" id="p-people">${allMembers().filter(u => u.id !== S.me.id).map(u => `<label><input type="checkbox" value="${u.id}" onchange="this.parentNode.classList.toggle('on',this.checked)">${av(u.id)}${esc(pname(u.id))}</label>`).join('')}</div>` : ''}`;
+}
+async function setVis(priv){
+  const p = S.modal === 'project-edit' ? proj() : null;
+  if (!p) { S.newPriv = priv; const keep = { n: $('#p-name').value, d: $('#p-desc').value }; renderModal(); $('#p-name').value = keep.n; $('#p-desc').value = keep.d; return; }
+  if (priv === (p.visibility === 'private')) return;
+  if (!confirm(priv ? 'El proyecto pasará a verse solo por las personas que invites. Ahora mismo solo quedarás tú dentro. ¿Seguir?' : 'El proyecto pasará a verlo toda la clase. ¿Seguir?')) return;
+  await q(sb.from('projects').update({ visibility: priv ? 'private' : 'class' }).eq('id', p.id));
+  await loadBase(); renderModal();
+}
+function groupPeopleHTML(p){
+  const ids = pmembersOf(p.id), adm = adminsOf(p.id), E = adminOf(p.id);
+  return `<label>Personas del grupo (${ids.length}) <small>${E ? '(marca el escudo para hacer admin: puede editar todo e invitar)' : ''}</small></label>
+    <div class="gpeople">${ids.map(id => `<div class="gp">${av(id)}<span class="grow">${esc(pname(id))}</span>
+      ${E && id !== S.me.id ? `<button type="button" class="ico ${adm.includes(id) ? 'on' : ''}" title="${adm.includes(id) ? 'Quitar admin' : 'Hacer admin'}" onclick="toggleProjectAdmin('${p.id}','${id}',${!adm.includes(id)}).then(()=>loadBase()).then(renderModal)">${ic(adm.includes(id) ? 'shield-check' : 'shield', 'sm')}</button>
+        <button type="button" class="ico" title="Sacar del grupo" onclick="groupKick('${p.id}','${id}')">${ic('user-minus', 'sm')}</button>` : adm.includes(id) ? '<span class="badge">Admin</span>' : ''}</div>`).join('')}</div>
+    ${E ? `<select onchange="this.value&&groupInvite('${p.id}',this.value)"><option value="">+ Invitar a…</option>${allMembers().filter(u => !ids.includes(u.id)).map(u => `<option value="${u.id}">${esc(pname(u.id))}</option>`).join('')}</select>` : ''}
+    ${ids.includes(S.me.id) ? `<button type="button" class="btn sm" style="margin-top:8px" onclick="groupLeave('${p.id}')">${ic('log-out', 'sm')} Salirme de este proyecto</button>` : ''}`;
+}
+async function groupInvite(pid, uid){ await q(sb.from('project_members').insert({ project_id: pid, user_id: uid })); await loadBase(); renderModal(); toast(pname(uid) + ' ya está en el proyecto'); }
+async function groupKick(pid, uid){
+  if (!confirm(`¿Sacar a ${pname(uid)} del proyecto? Dejará de verlo.`)) return;
+  await q(sb.from('project_members').delete().match({ project_id: pid, user_id: uid })); await loadBase(); renderModal();
+}
+async function groupLeave(pid){
+  const last = pmembersOf(pid).length === 1;
+  if (!confirm(last ? 'Eres la última persona del grupo: si te sales, nadie podrá verlo. ¿Seguro?' : 'Dejarás de ver este proyecto. ¿Salirte?')) return;
+  await q(sb.from('project_members').delete().match({ project_id: pid, user_id: S.me.id }));
+  S.modal = null; S.pid = null; await loadBase(); go('home');
+}
+async function delPrivate(id, name){
+  if (prompt(`Esto borra el proyecto de grupo «${name}» con todo su contenido.\nEscribe su nombre para confirmar:`) !== name) return toast('Nombre incorrecto: no se ha borrado nada');
+  await q(sb.rpc('delete_private_project', { p: id })); await loadBase(); renderModal();
+}
+
 function membersHTML(){
-  const pend = S.profiles.filter(p => !p.approved && !p.is_admin), mem = members();
-  const projs = S.projects.filter(p => !p.is_template);
+  const pend = S.profiles.filter(p => !p.approved && !p.is_admin), mem = allMembers();
+  const projs = S.projects.filter(p => !p.is_template && p.visibility !== 'private');
   const row = (p, right) => `<div class="mem">${av(p.id, 'l')}<div><b>${esc(p.full_name || '(sin nombre aún)')}</b> ${p.is_admin ? '<span class="badge own">Propietario</span>' : ''}<small>${esc(p.email)}</small>
     ${!p.is_admin && p.approved ? `<div class="row" style="flex-wrap:wrap;margin-top:6px;gap:4px">${S.padmins.filter(a => a.user_id === p.id).map(a => `<span class="chip acc">${ic('shield', 'sm')} ${esc(proj(a.project_id)?.name)}<button class="ico" style="padding:0" title="Quitar admin" onclick="toggleProjectAdmin('${a.project_id}','${p.id}',false)">${ic('x', 'sm')}</button></span>`).join('')}
       <select style="width:auto;padding:2px 6px;font-size:12px" onchange="this.value&&toggleProjectAdmin(this.value,'${p.id}',true)"><option value="">+ Admin de…</option>${projs.filter(x => !S.padmins.some(a => a.user_id === p.id && a.project_id === x.id)).map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></div>` : ''}</div>${right}</div>`;
   return `<div class="mod md"><div class="mh"><h3>Miembros y permisos</h3><button class="ico" onclick="closeModal()">${ic('x')}</button></div><div class="mb">
-    <div class="banner info">${ic('info')}<div><b>Propietario</b> (tú): todo. <b>Admin</b>: edita sus proyectos, crea proyectos y publica en el diario; no puede aceptar ni quitar miembros ni nombrar admins. <b>Miembro</b>: ve todo, comenta, añade subtareas y apunta horas.</div></div>
+    <div class="banner info">${ic('info')}<div><b>Propietario</b> (tú): todo. <b>Admin</b>: edita sus proyectos y publica en el diario. <b>Miembro</b>: ve los proyectos de clase, comenta, añade subtareas y apunta horas. Cualquiera puede crear proyectos; los de <b>grupo</b> solo los ven quienes están dentro (tampoco tú si no te invitan).</div></div>
     <label>Solicitudes pendientes (${pend.length})</label>
     ${pend.map(p => row(p, `<button class="btn pri sm" onclick="approve('${p.id}',true)">Aprobar</button><button class="btn bad sm" onclick="reject('${p.id}')">Rechazar</button>`)).join('') || '<p class="mut small">No hay solicitudes. Pásales el enlace de la web y que entren con Google.</p>'}
     <label>Con acceso (${mem.length})</label>
     ${mem.map(p => row(p, p.is_admin ? '' : `<button class="btn bad sm" onclick="approve('${p.id}',false)">Quitar acceso</button>`)).join('')}
+    <label>Proyectos de grupo (${S.privList.length}) <small>(solo ves que existen; su contenido es de sus miembros)</small></label>
+    ${S.privList.map(x => `<div class="mem">${ic('lock')}<div><b>${esc(x.name)}</b><small>${x.members} persona${x.members === 1 ? '' : 's'} · creado por ${esc(x.creator || '—')} · ${fmtD(x.created_at.slice(0, 10))}${x.inside ? ' · estás dentro' : ''}</small></div>
+      <button class="btn bad sm" onclick="delPrivate('${x.id}',${esc(JSON.stringify(x.name))})">Borrar</button></div>`).join('') || '<p class="mut small">Nadie ha creado proyectos de grupo todavía.</p>'}
   </div></div>`;
 }
 

@@ -24,10 +24,10 @@ const REACT_POST = ['👍','✅','👀','❤️','🎉'], REACT_MSG = ['👍','�
 const S = { user:null, me:null, profiles:[], projects:[], padmins:[], notifs:[], mine:[], reads:{}, recent:[], review:[], weekMin:0,
   pid:null, tid:null, view:'home', uid:null, person:null,
   buckets:[], tasks:[], trash:[], activity:[], deps:[], tlogs:[], posts:[], preacts:[], votes:[], cdraft:[], tvotes:[], wiki:[], wid:null, wedit:null, revs:null, act84:[],
-  listSort:{ k:'due', d:1 }, listQ:'', qr:false, rsvps:[], materials:[], meetings:[], exams:[], pitems:[], priv:'', cposts:[], cvotes:[], creacts:[], notes:[], ndraft:{ title:'', url:'', blob:null, mod:null }, track:[], deliv:[], cweek:null, plans:[], marks:[], decisions:[], dscores:[], parts:[], pmembers:[], contribs:[], issues:[], sitems:[], partF:null,
+  listSort:{ k:'due', d:1 }, listQ:'', qr:false, rsvps:[], materials:[], meetings:[], exams:[], pitems:[], priv:'', cposts:[], cvotes:[], creacts:[], notes:[], ndraft:{ title:'', url:'', blob:null, mod:null }, track:[], deliv:[], cweek:null, plans:[], marks:[], decisions:[], dscores:[], parts:[], pmembers:[], contribs:[], issues:[], sitems:[], partF:null, pmem:[], privList:[],
   comments:[], tact:[], subs:[], reacts:[],
   onlyMine:false, label:'', cal:null, found:null, sel:new Set(), selMode:false, pop:null, reply:null, hidden:new Set(),
-  sort: ls('sort') || 'manual', compact: !!ls('compact'), panel:null, modal:null, seen:null, urls:{},
+  sort: ls('sort') || 'manual', compact: ls('compact') ?? matchMedia('(max-width:860px)').matches, panel:null, modal:null, seen:null, urls:{},
   draft:{ body:'', images:[], poll:null }, busy:false };
 
 /* ============ utilidades ============ */
@@ -41,7 +41,10 @@ function ls(k, v){ try { if (v === undefined) return JSON.parse(localStorage.get
 const prof = id => S.profiles.find(p => p.id === id);
 const pname = id => { const p = prof(id); return p ? (p.full_name || p.google_name || p.email) : 'Sistema'; };
 const first = id => pname(id).split(/\s+/)[0];
-const members = () => S.profiles.filter(p => p.approved || p.is_admin).sort((a, b) => pname(a.id).localeCompare(pname(b.id)));
+const allMembers = () => S.profiles.filter(p => p.approved || p.is_admin).sort((a, b) => pname(a.id).localeCompare(pname(b.id)));
+// dentro de un proyecto de grupo, «la gente» son solo sus miembros (asignar, mencionar, partes…)
+const members = () => { const inP = S.pid && (S.tid || PVIEWS.some(v => v[0] === S.view)) && isPrivate(); const ids = inP ? pmembersOf(S.pid) : null;
+  return ids ? allMembers().filter(p => ids.includes(p.id)) : allMembers(); };
 const proj = (id = S.pid) => S.projects.find(p => p.id === id);
 const hue = s => [...s].reduce((a, c) => a + c.charCodeAt(0) * 7, 0) % 360;
 const lblHTML = l => `<span class="lbl" style="--h:${hue(l)}">${esc(l)}</span>`;
@@ -133,15 +136,20 @@ function applyTheme(){
   root.dataset.accent = a; root.dataset.contrast = c ? 'high' : '';
   ls('accent', a); ls('contrast', c);
 }
-const DEFAULT_TABS = ['board', 'gantt', 'diary', 'cal', 'files', 'material'];
+const DEFAULT_TABS = ['board', 'diary', 'cal', 'files', 'plans', 'material', 'issues', 'gantt'];
+// zonas de pestañas: Trabajo · Documentos · Seguimiento
+const TAB_ZONES = [['Trabajo', ['board', 'list', 'diary', 'cal']], ['Documentos', ['files', 'plans', 'material', 'wiki', 'deliv', 'decide']], ['Seguimiento', ['issues', 'gantt', 'team', 'stats', 'hist', 'trash']]];
 const CARD_FIELDS = [['prio', 'Prioridad'], ['labels', 'Etiquetas'], ['due', 'Fecha límite'], ['subtasks', 'Subtareas'], ['comments', 'Mensajes'], ['hours', 'Horas'], ['votes', 'Votos'], ['avatars', 'Personas']];
 const showField = k => !pref('cardOff', []).includes(k);
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ============ roles ============ */
 const isOwner = () => !!S.me?.is_admin;
-const adminOf = (pid = S.pid) => isOwner() || S.padmins.some(a => a.project_id === pid && a.user_id === S.me.id);
-const canCreate = () => isOwner() || S.padmins.some(a => a.user_id === S.me.id);
+const isPrivate = (pid = S.pid) => proj(pid)?.visibility === 'private';
+// en los proyectos de grupo el propietario de la web no manda: solo sus admins
+const adminOf = (pid = S.pid) => (!isPrivate(pid) && isOwner()) || S.padmins.some(a => a.project_id === pid && a.user_id === S.me.id);
+const canCreate = () => true;
+const pmembersOf = pid => S.pmem.filter(m => m.project_id === pid).map(m => m.user_id);
 const adminsOf = pid => S.padmins.filter(a => a.project_id === pid).map(a => a.user_id);
 function roleBadge(uid, pid){
   if (prof(uid)?.is_admin) return '<span class="badge own">Propietario</span>';
@@ -211,7 +219,7 @@ async function buildSummary(){
 /* ============ datos ============ */
 async function loadBase(){
   const monday = (() => { const d = new Date(); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return isoOf(d); })();
-  const [profiles, projects, , mine, reads, padmins, recent, review, week, settings, meetings, exams, pitems] = await Promise.all([
+  const [profiles, projects, , mine, reads, padmins, recent, review, week, settings, meetings, exams, pitems, pmem, privList, usedT, usedA] = await Promise.all([
     q(sb.from('profiles').select('*')),
     q(sb.from('projects').select('*, tasks(status,deleted_at)').order('created_at')),
     loadNotifs(),
@@ -225,7 +233,13 @@ async function loadBase(){
     q(sb.from('posts').select('id,project_id,meeting_at,place').eq('kind', 'meeting').gte('meeting_at', new Date(Date.now() - 864e5 * 8).toISOString()).order('meeting_at').limit(40)),
     q(sb.from('exams').select('*').order('exam_date')),
     q(sb.from('personal_items').select('*').order('position')),
+    q(sb.from('project_members').select('project_id,user_id')),
+    q(sb.rpc('private_projects_admin')),
+    q(sb.from('posts').select('id').is('project_id', null).limit(1)),
+    q(sb.from('module_notes').select('id').limit(1)),
   ]);
+  S.used = { tablon: !!usedT?.length, apuntes: !!usedA?.length };
+  S.pmem = pmem || []; S.privList = privList || [];
   S.meetings = meetings; S.exams = exams; S.pitems = pitems || [];
   S.settings = settings || {};
   projects.forEach(p => p.tasks = p.tasks.filter(t => !t.deleted_at));
@@ -327,7 +341,7 @@ async function signImages(bucket, paths){
 
 // Tiempo real selectivo: cada cambio recarga solo la parte afectada (avisos, base, proyecto abierto o tarea abierta)
 const RT_SKIP = new Set(['activity', 'task_reads', 'usage_events', 'admin_log', 'email_sent', 'wiki_revisions', 'task_private_notes']);
-const RT_BASE = new Set(['projects', 'project_admins', 'app_settings', 'exams']);
+const RT_BASE = new Set(['projects', 'project_admins', 'project_members', 'app_settings', 'exams']);
 let tmr, rtq = {};
 function relProject(t, r){
   if ('project_id' in r) return r.project_id === S.pid;

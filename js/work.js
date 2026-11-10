@@ -224,7 +224,7 @@ function nextSession(p = proj()){
 function sessionPanelHTML(){
   const s = nextSession(); if (!s) return adminOf() ? '' : '';
   const items = S.sitems.filter(i => i.day === s.day).sort((a, b) => a.created_at.localeCompare(b.created_at));
-  const open = S.sesOpen ?? s.today;
+  const open = S.sesOpen ?? s.today; if (!open) return '';
   return `<div class="card-box sess ${s.today ? 'today' : ''}"><button class="sess-h" onclick="S.sesOpen=${!open};render()" aria-expanded="${open}">
       ${ic('wrench', 'sm')} <b>${s.today ? 'Hoy' : cap(WD[+s.wd])} ${fmtD(s.day)}</b> · ${s.start}–${s.end}${s.place ? ' · ' + esc(s.place) : ''} <span class="mut">· Sesión de taller</span>
       <span class="grow"></span><span class="mut small">${items.filter(i => i.done).length}/${items.length} hecho</span>${ic(open ? 'chevron-up' : 'chevron-down', 'sm')}</button>

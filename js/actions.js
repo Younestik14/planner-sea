@@ -14,11 +14,14 @@ async function saveProject(edit){
   const row = { name, description: $('#p-desc').value.trim() || null, drive_url: drive || null, color: document.querySelector('input[name=pc]:checked').value,
                 due_date: $('#p-due').value || null, is_template: $('#p-tpl').checked, emoji: $('#p-emoji').value.trim() || null, module: $('#p-mod').value || null };
   if (S.coverDraft !== undefined) row.cover = S.coverDraft;
+  const people = [...document.querySelectorAll('#p-people input:checked')].map(i => i.value);
+  if (!edit && S.newPriv) row.visibility = 'private';
   if (edit) { row.archived = $('#p-arch').checked; await q(sb.from('projects').update(row).eq('id', S.pid)); closeModal(); return; }
   let id;
   if ($('#p-from')?.value) { id = await q(sb.rpc('duplicate_project', { p_src: $('#p-from').value, p_name: name, p_template: row.is_template })); await q(sb.from('projects').update(row).eq('id', id)); }
   else { id = (await q(sb.from('projects').insert(row).select()))[0].id; if ($('#p-preset')?.value) await applyPreset(id, $('#p-preset').value); }
-  S.modal = null; await loadBase(); goProject(id);
+  if (people.length) await q(sb.from('project_members').insert(people.map(u => ({ project_id: id, user_id: u }))));
+  S.newPriv = false; S.modal = null; await loadBase(); goProject(id);
 }
 async function saveAsTemplate(){
   const n = prompt('Nombre de la plantilla:', 'Plantilla – ' + proj().name); if (!n?.trim()) return;

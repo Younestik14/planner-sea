@@ -768,3 +768,6 @@ button.day-i{cursor:pointer}.day-i.check{cursor:pointer}.day-i .done{text-decora
 .sess-h{display:flex;gap:8px;align-items:center;width:100%;padding:11px 14px;border:0;background:none;color:var(--txt);font:inherit;cursor:pointer;text-align:left;flex-wrap:wrap}
 .sess-b{padding:0 14px 12px}.ses-r{margin-bottom:8px}.ses-r select{max-width:140px}.ses-r input[type=time]{max-width:120px}
 @media(max-width:860px){.sess{margin:12px 14px 0}}
+/* proyectos de grupo */
+.gpeople{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+.gp{display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--line);border-radius:10px}

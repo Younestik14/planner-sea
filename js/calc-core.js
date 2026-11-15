@@ -255,6 +255,7 @@ const CALCSEA = (() => {
     else pasos.push({ t: `Se cumple todo con la sección mínima reglamentaria (${nf(Smin, 1)} mm², ${viv ? 'ITC-BT-25' : linea.ref})` });
     const Sp = seccionProteccion(S);
     pasos.push({ t: 'Conductor de protección (ITC-BT-19, tabla 2)', f: `Sp = ${nf(Sp, 1)} mm²` });
+    if (enterrado) avisos.push('En instalaciones enterradas no se ha aplicado factor de agrupamiento: si hay varios circuitos o tubos enterrados juntos, aplica además el factor de la UNE-HD 60364-5-52 para cables enterrados agrupados.');
     if (S > 120) avisos.push('Para secciones mayores de 120 mm² la reactancia se estima con la tabla 1 de la Guía Anexo 2; si tienes el dato del fabricante, compruébalo.');
     if (S === 300) avisos.push('300 mm² no figura en la tabla de cables al aire; solo es válida enterrada.');
 

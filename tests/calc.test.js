@@ -164,3 +164,9 @@ test('parseNum acepta coma o punto decimal', () => {
   assert.ok(Number.isNaN(C.parseNum('')));
   assert.ok(Number.isNaN(C.parseNum('abc')));
 });
+
+// ---- Revisión final ----
+test('enterrado: avisa de que no se aplica agrupamiento', () => {
+  const r = C.dimensionar({ ...MOTOR, metodo: 'D', T: 25, rho: 2.5, directo: false });
+  assert.ok(r.avisos.some(a => a.includes('agrupamiento')));
+});

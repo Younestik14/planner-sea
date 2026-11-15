@@ -33,7 +33,7 @@ function render(){
     <button onclick="togglePanel('notifs')">${ic('bell', 'lg')}Avisos${unread ? `<b>${unread}</b>` : ''}</button>
   </nav>
   ${S.selMode && S.sel.size ? bulkBarHTML() : ''}`;
-  icons();
+  icons(); window.fxAfterRender?.();
   // al cambiar de pantalla, el contenido entra con un fundido corto (sin bloquear el pintado)
   if (changed && !matchMedia('(prefers-reduced-motion: reduce)').matches) $('main')?.animate([{ opacity: 0, transform: 'translateY(10px) scale(.992)', filter: 'blur(4px)' }, { opacity: 1, transform: 'none', filter: 'blur(0)' }], { duration: 380, easing: 'cubic-bezier(.2,.8,.2,1)' });
 }
@@ -149,8 +149,8 @@ function projectHeaderHTML(p){
           ${E ? `<button onclick="S.panel=null;openModal('project-edit')">${ic('settings')} Ajustes${p.visibility === 'private' ? ' y personas' : ''}</button>` : ''}</div>` : ''}</div>
     </div>
     <div class="meta">
-      <div class="bar" style="--c:${esc(p.color)}"><i style="width:${total ? done / total * 100 : 0}%"></i></div>
-      <span class="small mut"><b style="color:var(--txt)">${total ? Math.round(done / total * 100) : 0}%</b> · ${done}/${total} completadas</span>
+      ${ringHTML(total ? done / total * 100 : 0, p.color, 34, 5)}
+      <span class="small mut"><b style="color:var(--txt)">${total ? Math.round(done / total * 100) : 0} %</b> · ${done} de ${total} completadas</span>
       ${late ? `<span class="chip bad">${ic('triangle-alert', 'sm')} ${late} vencidas</span>` : ''}
       ${dueProjectChip(p)}
       ${riskChip(p, S.tasks)}
@@ -160,9 +160,8 @@ function projectHeaderHTML(p){
   </div>
   <div class="tabs" style="--c:${esc(p.color)}">
     ${tabsHTML(E)}
-    <div class="sp"></div>
-    ${S.view === 'board' ? boardToolsHTML() : ''}
-  </div>`;
+  </div>
+  ${S.view === 'board' ? `<div class="btools">${boardToolsHTML()}</div>` : ''}`;
 }
 function stripHTML(pin){
   const s = nextSession(), out = [];

@@ -12,9 +12,21 @@ function homeHTML(){
   return `<div class="page">
     <h1>${hi}, ${esc(first(S.me.id))} 👋</h1>
     <p class="mut" style="margin:0">${cap(new Date().toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' }))}</p>
+    <div class="kpis kpis-lo stagger">
+      <div class="card-box kpi tilt"><b data-count="${open.length}">${open.length}</b><span>Tareas pendientes</span></div>
+      <div class="card-box kpi tilt"><b style="color:${late.length ? 'var(--bad-t)' : 'inherit'}"><span data-count="${late.length}">${late.length}</span></b><span>Vencidas</span></div>
+      <div class="card-box kpi tilt"><b data-count="${week.length}">${week.length}</b><span>Vencen esta semana</span></div>
+      <div class="card-box kpi tilt"><b>${fmtMin(S.weekMin)}</b><span>Dedicadas esta semana</span></div>
+    </div>
+    <div class="sect">Proyectos activos</div>
+    <div class="pcards stagger">${act.map(p => { const tot = p.tasks.length, d = p.tasks.filter(t => t.status === 'completada').length;
+      return `<div class="card-box pcard tilt" style="--c:${esc(p.color)}" onclick="goProject('${p.id}')"><div class="pc-top"><div class="cover">${esc(p.emoji || '')}</div>${ringHTML(tot ? d / tot * 100 : 0, p.color, 46, 5)}</div><h4>${esc(p.name)}</h4>
+        <div class="row small mut" style="margin-top:8px"><span>${tot ? Math.round(d / tot * 100) : 0}% · ${d}/${tot}</span><span class="grow"></span>${dueProjectChip(p)}</div>
+        ${p.due_date && daysLeft(p.due_date) >= 0 ? `<div style="margin-top:8px">${riskChipLite(p)}</div>` : ''}
+        <div class="avs" style="margin-top:10px;justify-content:flex-start;padding-left:6px">${adminsOf(p.id).map(id => av(id)).join('')}</div></div>`; }).join('') || `<div class="card-box">${emptyState('folder-kanban', 'No hay proyectos activos')}</div>`}</div>
     ${todayHTML()}
     ${favsHTML()}
-    <div class="hgrid">
+    <div class="hgrid stagger">
       <div class="card-box"><h3>${ic('list-todo')} Tus próximas tareas <button class="btn ghost sm" style="margin-left:auto" onclick="go('mine')">Ver todas</button></h3>
         ${review.length ? `<div class="sect" style="margin-top:0">Te toca revisar</div>${review.map(t => `<div class="mrow" onclick="jump('${t.project_id}','${t.id}')">${ic('eye')}<div class="t"><b>${esc(t.title)}</b><small class="mut">${esc(proj(t.project_id)?.name)}</small></div><span class="rev">Revisar</span></div>`).join('')}<div class="sect">Tus tareas</div>` : ''}
         ${soon.map(mineRow).join('') || emptyState('party-popper', 'Todo al día', 'No tienes tareas pendientes.')}
@@ -26,19 +38,6 @@ function homeHTML(){
           <p>${esc(p.body || (p.poll_options ? '📊 Encuesta' : ''))}${p.images.length ? ` <span class="mut">· ${ic('image', 'sm')} ${p.images.length}</span>` : ''}</p></div>`).join('') || emptyState('megaphone', 'Sin publicaciones', 'Los admins publicarán aquí avisos y novedades.')}
       </div>
     </div>
-    <div class="kpis kpis-lo">
-      <div class="card-box kpi"><b>${open.length}</b><span>Tareas pendientes</span></div>
-      <div class="card-box kpi"><b style="color:${late.length ? 'var(--bad-t)' : 'inherit'}">${late.length}</b><span>Vencidas</span></div>
-      <div class="card-box kpi"><b>${week.length}</b><span>Vencen esta semana</span></div>
-      <div class="card-box kpi"><b>${fmtMin(S.weekMin)}</b><span>Dedicadas esta semana</span></div>
-    </div>
-    <div class="sect">Proyectos activos</div>
-    <div class="pcards">${act.map(p => { const tot = p.tasks.length, d = p.tasks.filter(t => t.status === 'completada').length;
-      return `<div class="card-box pcard" style="--c:${esc(p.color)}" onclick="goProject('${p.id}')"><div class="cover">${esc(p.emoji || '')}</div><h4>${esc(p.name)}</h4>
-        <div class="bar"><i style="width:${tot ? d / tot * 100 : 0}%"></i></div>
-        <div class="row small mut" style="margin-top:8px"><span>${tot ? Math.round(d / tot * 100) : 0}% · ${d}/${tot}</span><span class="grow"></span>${dueProjectChip(p)}</div>
-        ${p.due_date && daysLeft(p.due_date) >= 0 ? `<div style="margin-top:8px">${riskChipLite(p)}</div>` : ''}
-        <div class="avs" style="margin-top:10px;justify-content:flex-start;padding-left:6px">${adminsOf(p.id).map(id => av(id)).join('')}</div></div>`; }).join('') || `<div class="card-box">${emptyState('folder-kanban', 'No hay proyectos activos')}</div>`}</div>
   </div>`;
 }
 function mineRow(t){

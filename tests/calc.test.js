@@ -104,3 +104,54 @@ test('circuitos de vivienda (ITC-BT-25)', () => {
   assert.equal(C.CIRC_VIV.C3.S, 6);
   assert.equal(C.CIRC_VIV.C12_C4.In, 20);
 });
+
+// ---- Tarea 3 · protección y dimensionado completo ----
+test('protección con PIA', () => {
+  assert.equal(C.proteccion({ Ib: 50.94, Iz: 57, tipo: 'pia' }).In, null);
+  assert.equal(C.proteccion({ Ib: 50.94, Iz: 57, tipo: 'pia' }).cumple, false);
+  const r = C.proteccion({ Ib: 50.94, Iz: 77, tipo: 'pia' }); assert.equal(r.In, 63); assert.equal(r.cumple, true);
+  assert.equal(C.proteccion({ Ib: 16, Iz: 20, tipo: 'pia' }).In, 16);
+});
+
+test('protección con fusible gG', () => {
+  const r = C.proteccion({ Ib: 30, Iz: 40, tipo: 'gG' });
+  assert.equal(r.In, 32); near(r.I2, 51.2, 1e-9); assert.equal(r.cumple, true);
+});
+
+const MOTOR = { linea: 'fuerza', sistema: 'tri', U: 400, cos: 0.85, P: 30000, L: 50, mat: 'cu', aisl: 'XLPE', metodo: 'B1', T: 40, disp: 1, n: 1, capas: 1, prot: 'pia' };
+
+test('dimensionar: motor 30 kW, manda la protección', () => {
+  const r = C.dimensionar(MOTOR);
+  assert.equal(r.ok, true); near(r.Ib, 50.94, 0.01);
+  assert.equal(r.S, 16); assert.equal(r.Iz, 77); assert.equal(r.In, 63); assert.equal(r.manda, 'proteccion');
+  assert.equal(r.Sp, 16);
+  assert.ok(r.refs.some(x => x.includes('C.52.1 bis')));
+});
+
+test('dimensionar: C2 de vivienda (Guía Anexo 2, ejemplo 3), manda la caída', () => {
+  const r = C.dimensionar({ linea: 'viv', circuito: 'C2', sistema: 'mono', U: 230, L: 30, mat: 'cu', aisl: 'PVC', metodo: 'B1', T: 40, disp: 1, n: 1, capas: 1, prot: 'pia' });
+  assert.equal(r.Ib, 16); assert.equal(r.S, 4); assert.equal(r.manda, 'caida'); assert.equal(r.In, 16);
+});
+
+test('dimensionar: con factores de temperatura y agrupamiento', () => {
+  const r = C.dimensionar({ ...MOTOR, T: 50, n: 3 });
+  near(r.factor, 0.63, 1e-9);
+  assert.equal(r.S, 25); near(r.Iz, 63, 1e-9); assert.equal(r.In, 63); assert.equal(r.manda, 'intensidad');
+  assert.ok(r.pasos.some(p => p.t.includes('50 °C')));
+});
+
+test('dimensionar: fuera del alcance de la tabla', () => {
+  const r = C.dimensionar({ ...MOTOR, P: undefined, I: 700, aisl: 'PVC' });
+  assert.equal(r.ok, false); assert.match(r.error, /Fuera del alcance/);
+});
+
+test('dimensionar: manda la sección mínima', () => {
+  const r = C.dimensionar({ linea: 'di_unico', sistema: 'mono', U: 230, cos: 1, I: 10, L: 2, mat: 'cu', aisl: 'PVC', metodo: 'B1', T: 40, disp: 1, n: 1, capas: 1, prot: 'pia' });
+  assert.equal(r.S, 6); assert.equal(r.manda, 'minima');
+});
+
+test('dimensionar: enterrado con resistividad', () => {
+  const r = C.dimensionar({ ...MOTOR, metodo: 'D', T: 25, rho: 2.5, directo: false });
+  assert.equal(r.ok, true); near(r.factor, 1, 1e-9);
+  assert.ok(r.refs.some(x => x.includes('C.52.2 bis')));
+});

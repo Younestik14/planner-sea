@@ -185,7 +185,89 @@ const CALCSEA = (() => {
   // ITC-BT-19 apdo. 2.3, tabla 2: conductor de protección (mismo material que el de fase)
   const seccionProteccion = S => S <= 16 ? S : S <= 35 ? 16 : SECCIONES.find(s => s >= S / 2 - 1e-9);
 
+  /* ---------- Protección contra sobrecargas (UNE-HD 60364-4-43, apdo. 433.1) ---------- */
+  const CALIBRES_PIA = [6, 10, 13, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125];
+  const CALIBRES_GG = [2, 4, 6, 10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630];
+  // Corriente convencional de funcionamiento I2: PIA (UNE-EN 60898) 1,45·In; fusible gG (UNE-EN 60269-1) 2,1 / 1,9 / 1,6·In
+  const kI2 = (tipo, In) => tipo === 'pia' ? 1.45 : In <= 4 ? 2.1 : In < 16 ? 1.9 : 1.6;
+  const nombreProt = tipo => tipo === 'pia' ? 'interruptor automático (PIA)' : 'fusible gG';
+  function proteccion({ Ib, Iz, tipo }){
+    const In = (tipo === 'pia' ? CALIBRES_PIA : CALIBRES_GG).find(c => c >= Ib - 1e-9 && c <= Iz + 1e-9 && kI2(tipo, c) * c <= 1.45 * Iz + 1e-9) ?? null;
+    const I2 = In && kI2(tipo, In) * In;
+    const pasos = In
+      ? [`Ib = ${nf(Ib)} A ≤ In = ${In} A ≤ Iz = ${nf(Iz)} A`, `I2 = ${nf(kI2(tipo, In))}·In = ${nf(I2)} A ≤ 1,45·Iz = ${nf(1.45 * Iz)} A`]
+      : [`No hay ningún calibre normalizado de ${nombreProt(tipo)} entre Ib = ${nf(Ib)} A e Iz = ${nf(Iz)} A que cumpla I2 ≤ 1,45·Iz`];
+    return { In, I2: In ? I2 : null, cumple: !!In, pasos };
+  }
+
+  const nf = (v, d = 2) => Number.isFinite(v) ? v.toLocaleString('es-ES', { maximumFractionDigits: d }) : '—';
+
+  /* ---------- Dimensionado completo de la sección ---------- */
+  const MANDA = { intensidad: 'la intensidad admisible', caida: 'la caída de tensión', minima: 'la sección mínima reglamentaria', proteccion: 'la protección contra sobrecargas' };
+  function dimensionar(d){
+    const linea = LINEAS.find(l => l.id === d.linea), viv = d.linea === 'viv', circ = viv && CIRC_VIV[d.circuito];
+    const pasos = [], refs = [], avisos = [];
+    if (!linea || (viv && !circ)) return { ok: false, error: 'Elige el tipo de línea' + (viv ? ' y el circuito' : '') };
+    const cos = viv ? 1 : d.cos, cargados = d.sistema === 'tri' ? 3 : 2, enterrado = d.metodo === 'D';
+    // Vivienda: Ib = In del PIA del circuito y cos φ = 1, el caso más desfavorable (ITC-BT-25 y Guía Anexo 2, ejemplo 3)
+    const Ib = viv ? circ.In : Number.isFinite(d.I) && d.I > 0 ? d.I : intensidad({ sistema: d.sistema, P: d.P, U: d.U, cos });
+    if (viv) pasos.push({ t: `${circ.label}: la intensidad de cálculo es la del PIA del circuito y se toma cos φ = 1 (caso más desfavorable)`, f: `Ib = ${circ.In} A` });
+    else if (Number.isFinite(d.I) && d.I > 0) pasos.push({ t: 'Intensidad de cálculo dada', f: `Ib = ${nf(Ib)} A` });
+    else pasos.push({ t: 'Intensidad de cálculo', f: `Ib = P / (${d.sistema === 'tri' ? '√3·' : ''}U·cos φ) = ${nf(d.P, 0)} / (${d.sistema === 'tri' ? '√3·' : ''}${d.U}·${nf(cos)}) = ${nf(Ib)} A` });
+
+    let ft, fa = { f: 1, ntab: 1 }, fc = 1, fr = { f: 1 };
+    try {
+      ft = fTemp({ aisl: d.aisl, T: d.T, enterrado });
+      if (enterrado) fr = fResist({ rho: d.rho ?? 2.5, directo: !!d.directo });
+      else { fa = fAgrup({ disp: d.disp, n: d.n }); fc = fCapas(d.capas ?? 1); }
+    } catch (e) { return { ok: false, error: e.message }; }
+    const factor = ft.f * fa.f * fc * fr.f;
+    pasos.push({ t: `Temperatura ${enterrado ? 'del terreno' : 'ambiente'} ${d.T} °C${ft.Ttab !== d.T ? ` → se toma ${ft.Ttab} °C (valor tabulado más desfavorable)` : ''}`, f: `f_T = ${nf(ft.f)}` });
+    if (enterrado) pasos.push({ t: `Resistividad térmica del terreno ${nf(d.rho ?? 2.5)} K·m/W${fr.rhoTab !== (d.rho ?? 2.5) ? ` → se toma ${nf(fr.rhoTab)}` : ''}, ${d.directo ? 'directamente enterrado' : 'en tubo enterrado'}`, f: `f_ρ = ${nf(fr.f)}` });
+    else {
+      pasos.push({ t: `Agrupamiento: ${DISP[d.disp][0].toLowerCase()}, ${d.n} circuito(s)${fa.ntab !== d.n ? ` → se toma ${fa.ntab}` : ''}`, f: `f_A = ${nf(fa.f)}` });
+      if (fc !== 1) pasos.push({ t: `Agrupamiento en ${d.capas} capas`, f: `f_capas = ${nf(fc)}` });
+    }
+    pasos.push({ t: 'Factor de corrección total', f: `f = ${nf(factor, 3)}` });
+
+    const pctMax = linea.pct, Smin = viv ? circ.S : linea.Smin[d.mat];
+    if (viv && d.mat !== 'cu') avisos.push('En los circuitos interiores de vivienda (ITC-BT-25) las secciones mínimas son de cobre.');
+    let prev = null, res = null;
+    for (const S of SECCIONES.filter(s => s >= Smin)) {
+      const izb = izBase({ metodo: d.metodo, aisl: d.aisl, cargados, mat: d.mat, S });
+      if (izb == null) {
+        if (SECCIONES.some(s => s > S && izBase({ metodo: d.metodo, aisl: d.aisl, cargados, mat: d.mat, S: s }) != null)) continue; // secciones pequeñas no tabuladas en algunos métodos
+        break;
+      }
+      const Iz = izb * factor, c = caida({ sistema: d.sistema, L: d.L, I: Ib, cos, S, mat: d.mat, aisl: d.aisl, U: d.U }), p = proteccion({ Ib, Iz, tipo: d.prot });
+      const falla = Iz < Ib - 1e-9 ? 'intensidad' : c.pct > pctMax + 1e-9 ? 'caida' : !p.cumple ? 'proteccion' : null;
+      if (!falla) { res = { S, izb, Iz, c, p }; break; }
+      prev = { S, falla };
+    }
+    if (!res) return { ok: false, error: 'Fuera del alcance de la tabla para este método de instalación: ninguna sección tabulada cumple. Prueba otro método, varios conductores en paralelo o un aislamiento XLPE.', pasos, Ib };
+
+    const { S, izb, Iz, c, p } = res, manda = prev ? prev.falla : 'minima';
+    pasos.push({ t: `Intensidad admisible de ${nf(S, 1)} mm² (${d.mat === 'cu' ? 'cobre' : 'aluminio'}, ${d.aisl}, ${cargados} conductores cargados, método ${d.metodo})`, f: `Iz = ${nf(izb)} · ${nf(factor, 3)} = ${nf(Iz)} A ≥ Ib = ${nf(Ib)} A` });
+    pasos.push({ t: `Caída de tensión con γ = ${c.gamma} m/(Ω·mm²) (conductor a ${tServicio(d.aisl)} °C)${c.X ? '; reactancia X ≈ ' + nf(fX(S)) + '·R' : ''}`,
+      f: `ΔU = ${d.sistema === 'tri' ? '√3' : '2'}·I·(R·cos φ${c.X ? ' + X·sen φ' : ''}) = ${nf(c.dU)} V = ${nf(c.pct)} % ≤ ${nf(pctMax, 1)} %` });
+    p.pasos.forEach(f => pasos.push({ t: `Protección con ${nombreProt(d.prot)}`, f }));
+    if (prev) pasos.push({ t: `Con ${nf(prev.S, 1)} mm² no cumplía ${MANDA[prev.falla]}, por eso se sube a ${nf(S, 1)} mm²` });
+    else pasos.push({ t: `Se cumple todo con la sección mínima reglamentaria (${nf(Smin, 1)} mm², ${viv ? 'ITC-BT-25' : linea.ref})` });
+    const Sp = seccionProteccion(S);
+    pasos.push({ t: 'Conductor de protección (ITC-BT-19, tabla 2)', f: `Sp = ${nf(Sp, 1)} mm²` });
+    if (S > 120) avisos.push('Para secciones mayores de 120 mm² la reactancia se estima con la tabla 1 de la Guía Anexo 2; si tienes el dato del fabricante, compruébalo.');
+    if (S === 300) avisos.push('300 mm² no figura en la tabla de cables al aire; solo es válida enterrada.');
+
+    refs.push(enterrado ? 'UNE-HD 60364-5-52:2014, tabla C.52.2 bis (cables enterrados)' : 'UNE-HD 60364-5-52:2014, tabla C.52.1 bis (40 °C en el aire)',
+      'UNE-HD 60364-5-52:2014, factores de corrección (temperatura, agrupamiento' + (enterrado ? ', resistividad del terreno' : '') + ')',
+      `${linea.ref}: caída de tensión máxima ${nf(pctMax, 1)} %`, 'Guía técnica de aplicación del REBT, Anexo 2 (cálculo de caídas de tensión)',
+      'UNE-HD 60364-4-43: Ib ≤ In ≤ Iz e I2 ≤ 1,45·Iz', 'ITC-BT-19 (tabla 2): conductor de protección');
+    if (viv) refs.push('ITC-BT-25 (tabla 1): circuitos de vivienda');
+    return { ok: true, S, manda, Ib, Iz, izb, factor, f: { temp: ft.f, agrup: fa.f, capas: fc, resist: fr.f }, dU: c.dU, pct: c.pct, pctMax, In: p.In, Sp, pasos, refs, avisos };
+  }
+
   return { SECCIONES, METODOS, DISP, izBase, fTemp, fAgrup, fCapas, fResist,
-    intensidad, potencia, GAMMA, gamma, tServicio, caida, seccionPorCaida, LINEAS, CIRC_VIV, seccionProteccion };
+    intensidad, potencia, GAMMA, gamma, tServicio, caida, seccionPorCaida, LINEAS, CIRC_VIV, seccionProteccion,
+    CALIBRES_PIA, CALIBRES_GG, proteccion, dimensionar, MANDA, nf };
 })();
 if (typeof module !== 'undefined') module.exports = CALCSEA;

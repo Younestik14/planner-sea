@@ -69,6 +69,7 @@ function menuHTML(){
     <button onclick="ls('sound', ls('sound') === false);render()">${ic(ls('sound') === false ? 'volume-x' : 'volume-2')} Sonido ${ls('sound') === false ? 'desactivado' : 'activado'}</button>
     <button onclick="toggleBrowserNotifs()">${ic(ls('bnotif') ? 'bell-ring' : 'bell-off')} Avisos del navegador ${ls('bnotif') ? 'activados' : 'desactivados'}</button>
     <button onclick="S.panel=null;openModal('keys')">${ic('keyboard')} Atajos de teclado</button>
+    ${pwaInstalada() ? '' : `<button onclick="S.panel=null;instalarApp()">${ic('smartphone')} Instalar como app</button>`}
     <hr><button onclick="logout()">${ic('log-out')} Cerrar sesión</button></div>`;
 }
 function setTheme(t){ document.documentElement.dataset.theme = t; ls('theme', t); render(); }
@@ -250,7 +251,7 @@ async function readAll(){ S.notifs.forEach(n => n.read = true); render(); await 
 function renderModal(){
   const m = S.modal;
   if (!m) { $('#modal').innerHTML = ''; return; }
-  const extra = { minutes: minutesHTML, agreements: agreementsHTML, wikinew: wikiNewHTML, banner: bannerFormHTML, exam: examFormHTML, day: dayHTML, matimport: matImportHTML, docs: docsHTML, budget: budgetHTML, parts: partsModalHTML, issue: issueFormHTML, planner: plannerHTML, wa: waHTML, sessions: sessionsModalHTML, org: orgHTML, group: groupModalHTML, memoria: memoriaHTML, decnew: decNewHTML, deck: deckOptsHTML }[m];
+  const extra = { pwa: pwaHTML, minutes: minutesHTML, agreements: agreementsHTML, wikinew: wikiNewHTML, banner: bannerFormHTML, exam: examFormHTML, day: dayHTML, matimport: matImportHTML, docs: docsHTML, budget: budgetHTML, parts: partsModalHTML, issue: issueFormHTML, planner: plannerHTML, wa: waHTML, sessions: sessionsModalHTML, org: orgHTML, group: groupModalHTML, memoria: memoriaHTML, decnew: decNewHTML, deck: deckOptsHTML }[m];
   const html = extra ? extra() : m === 'task' ? taskHTML() : m === 'members' ? membersHTML() : m === 'summary' ? summaryHTML() : m === 'keys' ? keysHTML() : m === 'profile' ? profileHTML()
              : projectFormHTML(m === 'project-edit' ? proj() : null);
   if (!html) { S.modal = null; $('#modal').innerHTML = ''; return; }

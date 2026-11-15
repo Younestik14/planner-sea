@@ -248,3 +248,12 @@ body.scrolled header.top{border-bottom-color:var(--line2)}
   .top-title{max-width:46vw}
   body.scrolled header.top .brand{opacity:0;transition:opacity .2s}
 }
+
+/* ---- app instalable y sin conexión ---- */
+@media (display-mode: standalone){header.top{padding-top:env(safe-area-inset-top);height:calc(var(--top) + env(safe-area-inset-top))}aside.side{top:calc(var(--top) + env(safe-area-inset-top))}}
+body.offline header.top::after{content:"Sin conexión";position:absolute;left:50%;bottom:-13px;transform:translateX(-50%);background:var(--bad);color:#fff;font-size:11px;font-weight:600;padding:2px 10px;border-radius:999px;box-shadow:var(--shadow)}
+.pwa-hero{display:flex;gap:14px;align-items:center;margin:4px 0 14px}.pwa-hero img{border-radius:16px;box-shadow:var(--shadow-hi)}
+.pwa-pasos{list-style:none;padding:0;margin:0 0 12px;display:flex;flex-direction:column;gap:10px}
+.pwa-pasos li{display:flex;gap:12px;align-items:center}
+.pwa-n{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--acc);color:#fff;font-weight:600;font-size:13px;flex:none}
+.toast{border-radius:22px;text-align:center;line-height:1.35}

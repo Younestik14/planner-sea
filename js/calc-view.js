@@ -5,11 +5,13 @@ const CS_CALCS = [
   ['seccion', 'cable', 'Sección de una línea', 'Intensidad admisible, caída de tensión, sección mínima y protección, todo a la vez.'],
   ['intensidad', 'zap', 'Intensidad y potencia', 'Monofásica o trifásica, con su fórmula.'],
   ['proteccion', 'shield-check', 'Protección', 'Elige el PIA o fusible gG para una línea ya conocida (Ib e Iz).'],
+  ['prevision', 'building-2', 'Previsión de cargas', 'Viviendas, servicios generales, locales, industrias y garajes (ITC-BT-10).'],
+  ['cc', 'flame', 'Cortocircuito', 'Icc desde la potencia de cortocircuito, poder de corte y comprobación térmica del cable.'],
 ];
 const CS_PASOS = ['Tipo de línea', 'Carga', 'Cable', 'Condiciones', 'Longitud y protección'];
 const csNew = calc => ({ calc, paso: 0, err: {}, r: null,
   d: { linea: 'fuerza', circuito: 'C2', sistema: 'tri', U: '400', modo: 'P', P: '', I: '', cos: '0,9', mat: 'cu', aisl: 'XLPE', metodo: 'B1',
-    T: '40', disp: 1, n: '1', capas: '1', rho: '2,5', directo: false, L: '', prot: 'pia', Ib: '', Iz: '' } });
+    T: '40', disp: 1, receptor: 'general', ccModo: 'pcc', Pcc: '', Icc: '', Scc: '16', tcc: '0,1', pdc: '6', n: '1', capas: '1', rho: '2,5', directo: false, L: '', prot: 'pia', Ib: '', Iz: '' } });
 const csNum = k => CALCSEA.parseNum(S.cs.d[k]);
 const csNf = CALCSEA.nf;
 
@@ -37,6 +39,8 @@ function calcSeaHTML(){
   if (!C.calc) body = `<div class="cs-grid">${CS_CALCS.map(([k, i, n, dsc]) => `<button class="card-box cs-card" onclick="openCalcSea('${k}')"><span class="cs-ic">${ic(i)}</span><b>${n}</b><span class="small mut">${dsc}</span></button>`).join('')}</div>`;
   else if (C.calc === 'seccion') body = C.r ? csResultHTML() : csWizardHTML();
   else if (C.calc === 'intensidad') body = csIntensidadHTML();
+  else if (C.calc === 'prevision') body = csPrevisionHTML();
+  else if (C.calc === 'cc') body = csCcHTML();
   else body = csProteccionHTML();
   return `<div class="page cs-page">${head}${body}</div>`;
 }
@@ -54,6 +58,7 @@ function csWizardHTML(){
     f = viv ? `<div class="cs-note">${ic('info', 'sm')} En los circuitos de vivienda la intensidad de cálculo es la del PIA del circuito (${CALCSEA.CIRC_VIV[d.circuito].In} A), en monofásica a 230 V y con cos φ = 1, el caso más desfavorable (Guía técnica del REBT, Anexo 2).</div>`
       : `<label>Sistema</label>${csSeg('sistema', [['mono', 'Monofásica'], ['tri', 'Trifásica']], "S.cs.d.U=S.cs.d.sistema==='tri'?'400':'230';")}
         <div class="grid4 cs-fields">${csIn('U', 'Tensión', 'V')}${csIn('cos', 'cos φ', '', 'Entre 0 y 1')}</div>
+        <label>Tipo de receptor</label>${csSeg('receptor', [['general', 'General'], ['motor', 'Motor (×1,25)'], ['descarga', 'Lámparas de descarga (×1,8)']])}
         <label>Dato de la carga</label>${csSeg('modo', [['P', 'Potencia'], ['I', 'Intensidad']])}
         <div class="grid4 cs-fields">${d.modo === 'P' ? csIn('P', 'Potencia activa', 'kW') : csIn('I', 'Intensidad', 'A')}</div>`;
   } else if (C.paso === 2) {
@@ -103,7 +108,7 @@ function csDatos(){
   const d = S.cs.d, viv = d.linea === 'viv', n = csNum;
   return { linea: d.linea, circuito: d.circuito, sistema: viv ? 'mono' : d.sistema, U: viv ? 230 : n('U'), cos: viv ? 1 : n('cos'),
     P: !viv && d.modo === 'P' ? n('P') * 1000 : undefined, I: !viv && d.modo === 'I' ? n('I') : undefined,
-    L: n('L'), mat: d.mat, aisl: d.aisl, metodo: d.metodo, T: n('T'), disp: +d.disp, n: n('n'), capas: n('capas'), rho: n('rho'), directo: d.directo, prot: d.prot };
+    L: n('L'), mat: d.mat, aisl: d.aisl, metodo: d.metodo, T: n('T'), disp: +d.disp, n: n('n'), capas: n('capas'), rho: n('rho'), directo: d.directo, prot: d.prot, receptor: d.receptor };
 }
 
 function csResultHTML(){
@@ -161,6 +166,66 @@ function csProteccionHTML(){
 // Recalcula el resultado en vivo sin repintar la página (no se pierde el foco al escribir)
 function csLive(){
   const el = $('#cs-live'); if (!el) return;
-  const tmp = document.createElement('div'); tmp.innerHTML = S.cs.calc === 'intensidad' ? csIntensidadHTML() : csProteccionHTML();
-  const n = tmp.querySelector('#cs-live'); el.className = n.className; el.textContent = n.textContent;
+  const html = { intensidad: csIntensidadHTML, proteccion: csProteccionHTML, prevision: csPrevisionHTML, cc: csCcHTML }[S.cs.calc]();
+  const tmp = document.createElement('div'); tmp.innerHTML = html;
+  el.replaceWith(tmp.querySelector('#cs-live')); icons();
+}
+
+/* ---------- Previsión de cargas (ITC-BT-10) ---------- */
+const CS_PV_BLOQUES = [['sg', 'Servicios generales', 'Ascensores, alumbrado de escalera, bombas… (CS = 1)', [['label', 'Descripción', ''], ['P', 'Potencia', 'kW']]],
+  ['locales', 'Locales comerciales', '100 W/m², mínimo 3 450 W por local', [['m2', 'Superficie', 'm²'], ['P', 'Potencia prevista (opcional)', 'kW']]],
+  ['oficinas', 'Oficinas', '100 W/m², mínimo 3 450 W por oficina', [['m2', 'Superficie', 'm²'], ['P', 'Potencia prevista (opcional)', 'kW']]],
+  ['industrias', 'Industrias', '125 W/m², mínimo 10 350 W por local', [['m2', 'Superficie', 'm²'], ['P', 'Potencia prevista (opcional)', 'kW']]],
+  ['garajes', 'Garajes', '10 W/m² ventilación natural, 20 W/m² forzada, mínimo 3 450 W', [['m2', 'Superficie', 'm²']]]];
+function csPvState(){ return S.cs.pv ||= { basicas: '', elevadas: '', nocturna: false, sg: [], locales: [], oficinas: [], industrias: [], garajes: [] }; }
+function csPvSet(el){ const pv = csPvState(), { k, i, f } = el.dataset; if (i == null) pv[k] = el.value; else pv[k][+i][f] = el.value; csLive(); }
+function csPvAdd(k){ csPvState()[k].push(k === 'garajes' ? { m2: '', forzada: false } : k === 'sg' ? { label: '', P: '' } : { m2: '', P: '' }); render(); }
+function csPvDel(k, i){ csPvState()[k].splice(i, 1); render(); }
+function csPvDatos(){
+  const pv = csPvState(), n = v => CALCSEA.parseNum(v), ent = v => { const x = n(v); return Number.isInteger(x) && x >= 0 ? x : 0; };
+  const kw = v => n(v) > 0 ? n(v) * 1000 : undefined;
+  return { basicas: ent(pv.basicas), elevadas: ent(pv.elevadas), nocturna: pv.nocturna,
+    sg: pv.sg.filter(x => n(x.P) > 0).map(x => ({ label: x.label || 'Servicio general', P: n(x.P) * 1000 })),
+    ...Object.fromEntries(['locales', 'oficinas', 'industrias'].map(k => [k, pv[k].filter(x => n(x.m2) > 0).map(x => ({ m2: n(x.m2), P: kw(x.P) }))])),
+    garajes: pv.garajes.filter(x => n(x.m2) > 0).map(x => ({ m2: n(x.m2), forzada: x.forzada })) };
+}
+function csPrevisionHTML(){
+  const pv = csPvState(), r = CALCSEA.previsionEdificio(csPvDatos());
+  const inp = (k, i, f, label, unit) => `<div><label>${label}</label><div class="row" style="gap:6px"><input type="text" ${f === 'label' ? '' : 'inputmode="decimal"'} autocomplete="off" value="${esc(i == null ? pv[k] : pv[k][i][f])}" data-k="${k}" ${i == null ? '' : `data-i="${i}" data-f="${f}"`} oninput="csPvSet(this)">${unit ? `<span class="small mut" style="min-width:24px">${unit}</span>` : ''}</div></div>`;
+  const bloque = ([k, n, h, campos]) => `<div class="cs-pv"><div class="row"><b class="grow">${n}</b><button class="btn sm" onclick="csPvAdd('${k}')">${ic('plus', 'sm')} Añadir</button></div><p class="small mut" style="margin:2px 0 4px">${h}</p>
+    ${pv[k].map((x, i) => `<div class="cs-pv-row">${campos.map(([f, l, u]) => inp(k, i, f, l, u)).join('')}
+      ${k === 'garajes' ? `<div><label>Ventilación</label><div class="seg cs-seg"><button class="${x.forzada ? '' : 'on'}" onclick="S.cs.pv.garajes[${i}].forzada=false;render()">Natural</button><button class="${x.forzada ? 'on' : ''}" onclick="S.cs.pv.garajes[${i}].forzada=true;render()">Forzada</button></div></div>` : ''}
+      <button class="ico" title="Quitar" aria-label="Quitar" onclick="csPvDel('${k}',${i})">${ic('trash-2', 'sm')}</button></div>`).join('')}</div>`;
+  const live = `<div id="cs-live">${r.total > 0 ? `<div class="calc-res ok">${ic('circle-check', 'sm')} Previsión total: <b>${csNf(r.total / 1000, 3)} kW</b></div>
+      <ol class="cs-pasos">${r.pasos.map(p => `<li>${esc(p.t)}${p.f ? `<code>${esc(p.f)}</code>` : ''}</li>`).join('')}</ol>
+      <h3 class="cs-h">Normativa aplicada</h3><ul class="cs-refs">${r.refs.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '<div class="calc-res">Añade viviendas, servicios generales, locales o garajes para ver la previsión.</div>'}</div>`;
+  return `<div class="card-box cs-box"><h3 style="margin:0 0 8px">${ic('building-2', 'sm')} Previsión de cargas de un edificio</h3>
+    <div class="cs-pv"><b>Viviendas</b><p class="small mut" style="margin:2px 0 4px">Básica 5 750 W. Elevada 9 200 W si tiene calefacción o aire acondicionado (C8/C9), secadora (C10), más de 30 puntos de luz o 20 tomas, o más de 160 m² útiles.</p>
+      <div class="grid4 cs-fields">${inp('basicas', null, null, 'Electrificación básica', 'nº')}${inp('elevadas', null, null, 'Electrificación elevada', 'nº')}</div>
+      <label>Tarifa nocturna</label><div class="seg cs-seg"><button class="${pv.nocturna ? '' : 'on'}" onclick="S.cs.pv.nocturna=false;render()">No</button><button class="${pv.nocturna ? 'on' : ''}" onclick="S.cs.pv.nocturna=true;render()">Sí (CS = nº de viviendas)</button></div></div>
+    ${CS_PV_BLOQUES.map(bloque).join('')}
+    <h3 class="cs-h">Resultado</h3>${live}<p class="small mut cs-pie">${CS_PIE}</p></div>`;
+}
+
+/* ---------- Cortocircuito ---------- */
+const CS_PDC = [1.5, 3, 4.5, 6, 10, 15, 20, 25, 36, 50, 70, 100];
+function csCcHTML(){
+  const d = S.cs.d, n = csNum, Icc = d.ccModo === 'pcc' ? (n('Pcc') > 0 && n('U') > 0 ? CALCSEA.iccDesdePcc({ Pcc_MVA: n('Pcc'), U: n('U') }) : NaN) : n('Icc');
+  const t = n('tcc'), S_ = +d.Scc, ok = Icc > 0 && t > 0 && t <= 5;
+  const r = ok && CALCSEA.cortocircuito({ Icc_kA: Icc, S: S_, mat: d.mat, aisl: d.aisl, t, pdc_kA: d.pdc ? +d.pdc : null });
+  const pasos = ok ? [...(d.ccModo === 'pcc' ? [{ t: 'Corriente de cortocircuito a partir de la potencia de cortocircuito', f: `Icc = Pcc / (√3·U) = ${csNf(n('Pcc'))}·10⁶ / (√3·${csNf(n('U'))}) = ${csNf(Icc)} kA` }] : []), ...r.pasos] : [];
+  const todo = ok && r.cumpleTermico && r.cumplePdc !== false;
+  const live = `<div id="cs-live">${!ok ? `<div class="calc-res">Escribe ${d.ccModo === 'pcc' ? 'la potencia de cortocircuito y la tensión' : 'la Icc'} y un tiempo entre 0 y 5 s.</div>`
+    : `<div class="calc-res ${todo ? 'ok' : 'err'}">${ic(todo ? 'circle-check' : 'circle-x', 'sm')} ${todo ? 'Cumple' : 'No cumple'}: Icc = ${csNf(Icc)} kA · sección mínima ${csNf(r.Smin)} mm²</div>
+      <ol class="cs-pasos">${pasos.map(p => `<li>${esc(p.t)}<code>${esc(p.f)}</code></li>`).join('')}</ol>
+      <h3 class="cs-h">Normativa aplicada</h3><ul class="cs-refs">${r.refs.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`}</div>`;
+  return `<div class="card-box cs-box"><h3 style="margin:0 0 8px">${ic('flame', 'sm')} Cortocircuito</h3>
+    <label>Dato de partida</label>${csSeg('ccModo', [['pcc', 'Potencia de cortocircuito (la da la distribuidora)'], ['icc', 'Ya conozco la Icc']])}
+    <div class="grid4 cs-fields" oninput="csLive()">${d.ccModo === 'pcc' ? csIn('Pcc', 'Potencia de cortocircuito en el punto de BT', 'MVA', 'La da la distribuidora para ese punto; no uses la de la red de media tensión') + csIn('U', 'Tensión entre fases', 'V') : csIn('Icc', 'Intensidad de cortocircuito', 'kA')}
+      ${csIn('tcc', 'Duración del cortocircuito', 's', 'Orientativo: 0,1 s con PIA y 5 s con fusible')}</div>
+    <div class="grid4 cs-fields"><div><label for="cs-Scc">Sección del cable</label>${csSel('Scc', CALCSEA.SECCIONES.map(x => [x, csNf(x, 1) + ' mm²']))}</div>
+      <div><label for="cs-pdc">Poder de corte de la protección</label>${csSel('pdc', [['', 'No comprobar'], ...CS_PDC.map(x => [x, csNf(x, 1) + ' kA'])])}</div></div>
+    <label>Conductor</label>${csSeg('mat', [['cu', 'Cobre'], ['al', 'Aluminio']])} ${csSeg('aisl', [['PVC', 'PVC (termoplástico)'], ['XLPE', 'XLPE / EPR']])}
+    <h3 class="cs-h">Resultado</h3>${live}
+    <p class="small mut">La Icc al final de una línea (método de la Guía técnica, Anexo 3) llegará más adelante.</p><p class="small mut cs-pie">${CS_PIE}</p></div>`;
 }

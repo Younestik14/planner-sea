@@ -800,3 +800,6 @@ input[aria-invalid="true"]{border-color:var(--bad)}
 .cs-refs{margin:0;padding-left:20px;font-size:13px;color:var(--txt2);line-height:1.6}
 .cs-pie{margin:16px 0 0;padding-top:10px;border-top:1px dashed var(--line)}
 @media(max-width:600px){.cs-box{padding:16px}.cs-page{padding:16px}}
+.cs-pv{border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+.cs-pv-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr)) auto;gap:8px;align-items:end;margin-top:4px}
+.cs-pv-row .ico{margin-bottom:4px}

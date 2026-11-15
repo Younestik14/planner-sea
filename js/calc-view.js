@@ -6,12 +6,15 @@ const CS_CALCS = [
   ['intensidad', 'zap', 'Intensidad y potencia', 'Monofásica o trifásica, con su fórmula.'],
   ['proteccion', 'shield-check', 'Protección', 'Elige el PIA o fusible gG para una línea ya conocida (Ib e Iz).'],
   ['prevision', 'building-2', 'Previsión de cargas', 'Viviendas, servicios generales, locales, industrias y garajes (ITC-BT-10).'],
+  ['tubo', 'circle-dot', 'Diámetro de tubos', 'Diámetro exterior mínimo según el número y la sección de los conductores (ITC-BT-21).'],
+  ['tierra', 'earth', 'Puesta a tierra', 'Resistencia de picas, placas o conductor enterrado y tensión de contacto (ITC-BT-18).'],
+  ['reactiva', 'gauge', 'Compensación de reactiva', 'Batería de condensadores para mejorar el factor de potencia.'],
   ['cc', 'flame', 'Cortocircuito', 'Icc desde la potencia de cortocircuito, poder de corte y comprobación térmica del cable.'],
 ];
 const CS_PASOS = ['Tipo de línea', 'Carga', 'Cable', 'Condiciones', 'Longitud y protección'];
 const csNew = calc => ({ calc, paso: 0, err: {}, r: null,
   d: { linea: 'fuerza', circuito: 'C2', sistema: 'tri', U: '400', modo: 'P', P: '', I: '', cos: '0,9', mat: 'cu', aisl: 'XLPE', metodo: 'B1',
-    T: '40', disp: 1, receptor: 'general', ccModo: 'pcc', Pcc: '', Icc: '', Scc: '16', tcc: '0,1', pdc: '6', n: '1', capas: '1', rho: '2,5', directo: false, L: '', prot: 'pia', Ib: '', Iz: '' } });
+    T: '40', disp: 1, receptor: 'general', tuboSis: 'empotrado', tuboS: '2.5', tuboN: '3', phi: '', tTipo: 'pica', rhoS: '', tx: '2', tn: '1', Ia: '0.03', UL: 24, Pk: '', cos1: '0,8', cos2: '0,95', conex: 'triangulo', ccModo: 'pcc', Pcc: '', Icc: '', Scc: '16', tcc: '0,1', pdc: '6', n: '1', capas: '1', rho: '2,5', directo: false, L: '', prot: 'pia', Ib: '', Iz: '' } });
 const csNum = k => CALCSEA.parseNum(S.cs.d[k]);
 const csNf = CALCSEA.nf;
 
@@ -41,6 +44,9 @@ function calcSeaHTML(){
   else if (C.calc === 'intensidad') body = csIntensidadHTML();
   else if (C.calc === 'prevision') body = csPrevisionHTML();
   else if (C.calc === 'cc') body = csCcHTML();
+  else if (C.calc === 'tubo') body = csTuboHTML();
+  else if (C.calc === 'tierra') body = csTierraHTML();
+  else if (C.calc === 'reactiva') body = csReactivaHTML();
   else body = csProteccionHTML();
   return `<div class="page cs-page">${head}${body}</div>`;
 }
@@ -166,7 +172,7 @@ function csProteccionHTML(){
 // Recalcula el resultado en vivo sin repintar la página (no se pierde el foco al escribir)
 function csLive(){
   const el = $('#cs-live'); if (!el) return;
-  const html = { intensidad: csIntensidadHTML, proteccion: csProteccionHTML, prevision: csPrevisionHTML, cc: csCcHTML }[S.cs.calc]();
+  const html = { intensidad: csIntensidadHTML, proteccion: csProteccionHTML, prevision: csPrevisionHTML, cc: csCcHTML, tubo: csTuboHTML, tierra: csTierraHTML, reactiva: csReactivaHTML }[S.cs.calc]();
   const tmp = document.createElement('div'); tmp.innerHTML = html;
   el.replaceWith(tmp.querySelector('#cs-live')); icons();
 }
@@ -228,4 +234,52 @@ function csCcHTML(){
     <label>Conductor</label>${csSeg('mat', [['cu', 'Cobre'], ['al', 'Aluminio']])} ${csSeg('aisl', [['PVC', 'PVC (termoplástico)'], ['XLPE', 'XLPE / EPR']])}
     <h3 class="cs-h">Resultado</h3>${live}
     <p class="small mut">La Icc al final de una línea (método de la Guía técnica, Anexo 3) llegará más adelante.</p><p class="small mut cs-pie">${CS_PIE}</p></div>`;
+}
+
+/* ---------- Fase 3 · resultados en vivo ---------- */
+const csPasosHTML = r => `<ol class="cs-pasos">${r.pasos.map(p => `<li>${esc(p.t)}${p.f ? `<code>${esc(p.f)}</code>` : ''}</li>`).join('')}</ol>
+  <h3 class="cs-h">Normativa aplicada</h3><ul class="cs-refs">${r.refs.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
+
+function csTuboHTML(){
+  const d = S.cs.d, T = CALCSEA.TUBOS[d.tuboSis], ent = d.tuboSis === 'enterrado', n = csNum('tuboN'), S_ = +d.tuboS, phi = csNum('phi');
+  const ok = Number.isInteger(n) && n >= 1, r = ok && CALCSEA.tubo({ sistema: d.tuboSis, S: S_, n, phi });
+  let live = '<div class="calc-res">Escribe el número de conductores (entero, 1 o más).</div>';
+  if (ok && r.D) live = `<div class="calc-res ok">${ic('circle-check', 'sm')} Tubo de <b>${r.D} mm</b> de diámetro exterior mínimo</div><p class="small mut">${esc(r.ref)} · ${n} conductores de ${csNf(S_, 1)} mm²${ent && n < 6 ? ' (la tabla empieza en «hasta 6»)' : ''}.</p>`;
+  else if (ok && r.Dint) live = `<div class="calc-res ok">${ic('circle-check', 'sm')} Fuera de tabla: diámetro interior mínimo <b>${csNf(r.Dint, 1)} mm</b></div><ol class="cs-pasos"><li>Diámetro interior = Φ·√(f·n) con f = ${csNf(r.f, 1)}<code>${csNf(phi, 2)}·√(${csNf(r.f, 1)}·${n}) = ${csNf(r.Dint, 1)} mm</code></li></ol><p class="small mut">Elige un tubo cuyo diámetro <b>interior</b> sea igual o mayor (dato del fabricante).</p>`;
+  else if (ok) live = `<div class="calc-res err">${ic('circle-x', 'sm')} Fuera de la ${T[1]} de la ITC-BT-21 para ${n} conductores de ${csNf(S_, 1)} mm². Escribe el diámetro exterior del conductor (catálogo del fabricante) para calcularlo con Φ·√(f·n).</div>`;
+  return `<div class="card-box cs-box"><h3 style="margin:0 0 8px">${ic('circle-dot', 'sm')} Diámetro de tubos</h3>
+    <label for="cs-tuboSis">Sistema de instalación</label>${csSel('tuboSis', Object.entries(CALCSEA.TUBOS).map(([k, t]) => [k, `${t[0]} (ITC-BT-21, ${t[1]})`]))}
+    <div class="grid4 cs-fields"><div><label for="cs-tuboS">Sección de los conductores</label>${csSel('tuboS', Object.keys(T[3]).map(Number).sort((a, b) => a - b).map(x => [x, csNf(x, 1) + ' mm²']))}</div>
+      <div oninput="csLive()">${csIn('tuboN', 'Número de conductores', 'nº', ent ? 'De 1 a 10' : 'De 1 a 5 (incluido el de protección)')}</div>
+      <div oninput="csLive()">${csIn('phi', 'Diámetro del conductor (opcional)', 'mm', 'Solo si se sale de la tabla')}</div></div>
+    <h3 class="cs-h">Resultado</h3><div id="cs-live">${live}</div><p class="small mut cs-pie">${CS_PIE}</p></div>`;
+}
+
+function csTierraHTML(){
+  const d = S.cs.d, E = CALCSEA.ELECTRODOS[d.tTipo], rho = csNum('rhoS'), x = csNum('tx'), n = csNum('tn'), Ia = +d.Ia;
+  const ok = rho > 0 && x > 0 && Number.isInteger(n) && n >= 1;
+  const r = ok && CALCSEA.tierra({ tipo: d.tTipo, rho, L: x, P: x, n, Ia, UL: d.UL });
+  const live = !ok ? '<div class="calc-res">Escribe la resistividad del terreno, la medida del electrodo y cuántos hay.</div>'
+    : `<div class="calc-res ${r.cumple ? 'ok' : 'err'}">${ic(r.cumple ? 'circle-check' : 'circle-x', 'sm')} R = <b>${csNf(r.R)} Ω</b> · tensión de contacto ${csNf(r.Uc)} V ${r.cumple ? '≤' : '>'} ${d.UL} V</div>${csPasosHTML(r)}`;
+  return `<div class="card-box cs-box"><h3 style="margin:0 0 8px">${ic('earth', 'sm')} Puesta a tierra</h3>
+    <label>Electrodo</label>${csSeg('tTipo', Object.entries(CALCSEA.ELECTRODOS).map(([k, e]) => [k, e[0]]), "S.cs.d.tx=S.cs.d.tTipo==='conductor'?'':S.cs.d.tTipo==='pica'?'2':'';")}
+    <label for="cs-rhoT">Terreno (resistividad media, ITC-BT-18 tabla 4)</label><select id="cs-rhoT" onchange="S.cs.d.rhoS=this.value;render()"><option value="">Elegir o escribir abajo…</option>${CALCSEA.RHO_TERRENOS.map(([t, v]) => `<option value="${v}" ${S.cs.d.rhoS === String(v) ? 'selected' : ''}>${esc(t)} · ${v} Ω·m</option>`).join('')}</select>
+    <div class="grid4 cs-fields" oninput="csLive()">${csIn('rhoS', 'Resistividad del terreno', 'Ω·m', 'Mejor si se mide con telurómetro')}${csIn('tx', E[4], E[5])}${csIn('tn', 'Electrodos en paralelo', 'nº', 'Separados al menos su longitud')}</div>
+    <div class="grid4 cs-fields"><div><label for="cs-Ia">Sensibilidad del diferencial</label>${csSel('Ia', [['0.01', '10 mA'], ['0.03', '30 mA'], ['0.1', '100 mA'], ['0.3', '300 mA'], ['0.5', '500 mA'], ['1', '1 A']])}</div>
+      <div><label>Tensión de contacto límite</label>${csSeg('UL', [[24, '24 V · viviendas y locales húmedos'], [50, '50 V · locales secos']])}</div></div>
+    <h3 class="cs-h">Resultado</h3><div id="cs-live">${live}</div>
+    <p class="small mut">Valores orientativos de resistencia máxima: viviendas 37 Ω, edificios con pararrayos 15 Ω.</p><p class="small mut cs-pie">${CS_PIE}</p></div>`;
+}
+
+function csReactivaHTML(){
+  const d = S.cs.d, P = csNum('Pk'), c1 = csNum('cos1'), c2 = csNum('cos2'), U = csNum('U');
+  const ok = P > 0 && c1 > 0 && c1 <= 1 && c2 > 0 && c2 <= 1 && U > 0;
+  const r = ok && CALCSEA.reactiva({ P_kW: P, cos1: c1, cos2: c2, U, conexion: d.conex });
+  const live = !ok ? '<div class="calc-res">Escribe la potencia activa, los dos cos φ (entre 0 y 1) y la tensión.</div>'
+    : r.Qc_kvar === 0 ? `<div class="calc-res">El cos φ actual ya es igual o mejor que el deseado: no hace falta compensar.</div>`
+    : `<div class="calc-res ok">${ic('circle-check', 'sm')} Batería de <b>${csNf(r.Qc_kvar)} kvar</b> · ${csNf(r.C_uF, 1)} µF por fase</div>${csPasosHTML(r)}`;
+  return `<div class="card-box cs-box"><h3 style="margin:0 0 8px">${ic('gauge', 'sm')} Compensación de energía reactiva</h3>
+    <div class="grid4 cs-fields" oninput="csLive()">${csIn('Pk', 'Potencia activa', 'kW')}${csIn('cos1', 'cos φ actual', '')}${csIn('cos2', 'cos φ deseado', '', 'Habitual: 0,95 o más')}${csIn('U', 'Tensión entre fases', 'V')}</div>
+    <label>Conexión de los condensadores</label>${csSeg('conex', [['triangulo', 'Triángulo'], ['estrella', 'Estrella']])}
+    <h3 class="cs-h">Resultado</h3><div id="cs-live">${live}</div><p class="small mut cs-pie">${CS_PIE}</p></div>`;
 }

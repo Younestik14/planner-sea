@@ -220,3 +220,44 @@ test('lámparas de descarga: Ib × 1,8 (ITC-BT-44)', () => {
   const r = C.dimensionar({ ...MOTOR, linea: 'alum', P: 3000, cos: 0.9, sistema: 'mono', U: 230, receptor: 'descarga' });
   near(r.Ib, 3000 / (230 * 0.9) * 1.8, 1e-9);
 });
+
+// ======== Fase 3 ========
+test('tubos ITC-BT-21 (tablas 2, 5, 7 y 9)', () => {
+  assert.equal(C.tubo({ sistema: 'superficie', S: 2.5, n: 3 }).D, 16);
+  assert.equal(C.tubo({ sistema: 'empotrado', S: 6, n: 3 }).D, 25);
+  assert.equal(C.tubo({ sistema: 'aire', S: 16, n: 5 }).D, 40);
+  assert.equal(C.tubo({ sistema: 'enterrado', S: 10, n: 5 }).D, 63);
+  assert.equal(C.tubo({ sistema: 'enterrado', S: 50, n: 8 }).D, 125);
+  assert.equal(C.tubo({ sistema: 'superficie', S: 240, n: 2 }).D, 75);
+});
+
+test('tubos fuera de tabla', () => {
+  assert.equal(C.tubo({ sistema: 'aire', S: 25, n: 2 }).D, null);
+  assert.equal(C.tubo({ sistema: 'empotrado', S: 240, n: 3 }).D, null);
+  assert.equal(C.tubo({ sistema: 'superficie', S: 4, n: 6 }).D, null);
+  // con el diámetro del conductor: D_int = Φ·√(f·n), f = 3 empotrado
+  near(C.tubo({ sistema: 'empotrado', S: 4, n: 6, phi: 4.2 }).Dint, 4.2 * Math.sqrt(18), 1e-9);
+});
+
+test('puesta a tierra: resistencia de electrodos', () => {
+  assert.equal(C.tierra({ tipo: 'pica', rho: 500, L: 2 }).R, 250);
+  assert.equal(C.tierra({ tipo: 'placa', rho: 50, P: 4 }).R, 10);
+  assert.equal(C.tierra({ tipo: 'conductor', rho: 500, L: 40 }).R, 25);
+  assert.equal(C.tierra({ tipo: 'pica', rho: 500, L: 2, n: 4 }).R, 62.5);
+});
+
+test('puesta a tierra: tensión de contacto con el diferencial', () => {
+  let r = C.tierra({ tipo: 'pica', rho: 500, L: 2, n: 4, Ia: 0.03, UL: 24 });
+  near(r.Uc, 1.875, 1e-9); assert.equal(r.cumple, true); near(r.Rmax, 800, 1e-9);
+  r = C.tierra({ tipo: 'pica', rho: 3000, L: 2, Ia: 0.3, UL: 24 });
+  assert.equal(r.cumple, false);
+});
+
+test('compensación de reactiva', () => {
+  const r = C.reactiva({ P_kW: 100, cos1: 0.8, cos2: 0.95, U: 400, conexion: 'triangulo' });
+  near(r.Qc_kvar, 100 * (0.75 - Math.tan(Math.acos(0.95))), 1e-9); near(r.Qc_kvar, 42.13, 0.01);
+  near(r.C_uF, r.Qc_kvar * 1000 / (3 * 2 * Math.PI * 50 * 400 ** 2) * 1e6, 1e-9);
+  const e = C.reactiva({ P_kW: 100, cos1: 0.8, cos2: 0.95, U: 400, conexion: 'estrella' });
+  near(e.C_uF, 3 * r.C_uF, 1e-9);
+  assert.equal(C.reactiva({ P_kW: 100, cos1: 0.95, cos2: 0.9, U: 400, conexion: 'estrella' }).Qc_kvar, 0);
+});

@@ -321,6 +321,67 @@ const CALCSEA = (() => {
     return { k, Smin, tmax, cumpleTermico, cumplePdc, pasos, refs: ['UNE-HD 60364-4-43: comprobación térmica S ≥ Icc·√t / k', 'ITC-BT-22: el poder de corte debe ser ≥ la Icc en el punto de instalación'] };
   }
 
+  /* ---------- Tubos (ITC-BT-21) ---------- */
+  // Fuente: ITC-BT-21 tablas 2, 5, 7 y 9, reproducidas en «CALCULO SECCIONES1.pdf». Diámetro exterior mínimo en mm; null = «–»
+  const TUBOS = {
+    superficie: ['Tubo rígido en superficie', 'tabla 2', [1, 2, 3, 4, 5], {
+      1.5: [12, 12, 16, 16, 16], 2.5: [12, 12, 16, 16, 20], 4: [12, 16, 20, 20, 20], 6: [12, 16, 20, 20, 25], 10: [16, 20, 25, 32, 32], 16: [16, 25, 32, 32, 32],
+      25: [20, 32, 32, 40, 40], 35: [25, 32, 40, 40, 50], 50: [25, 40, 50, 50, 50], 70: [32, 40, 50, 63, 63], 95: [32, 50, 63, 63, 75], 120: [40, 50, 63, 75, 75],
+      150: [40, 63, 75, 75, _], 185: [50, 63, 75, _, _], 240: [50, 75, _, _, _] }],
+    empotrado: ['Tubos en canalizaciones empotradas', 'tabla 5', [1, 2, 3, 4, 5], {
+      1.5: [12, 12, 16, 16, 20], 2.5: [12, 16, 20, 20, 20], 4: [12, 16, 20, 20, 25], 6: [12, 16, 25, 25, 25], 10: [16, 25, 25, 32, 32], 16: [20, 25, 32, 32, 40],
+      25: [25, 32, 40, 40, 50], 35: [25, 40, 40, 50, 50], 50: [32, 40, 50, 50, 63], 70: [32, 50, 63, 63, 63], 95: [40, 50, 63, 75, 75], 120: [40, 63, 75, 75, _],
+      150: [50, 63, 75, _, _], 185: [50, 75, _, _, _], 240: [63, 75, _, _, _] }],
+    aire: ['Canalizaciones aéreas o tubos al aire', 'tabla 7', [1, 2, 3, 4, 5], {
+      1.5: [12, 12, 16, 16, 20], 2.5: [12, 16, 20, 20, 20], 4: [12, 16, 20, 20, 25], 6: [12, 16, 25, 25, 25], 10: [16, 25, 25, 32, 32], 16: [20, 25, 32, 32, 40] }],
+    enterrado: ['Tubos en canalizaciones enterradas', 'tabla 9', [6, 7, 8, 9, 10], {
+      1.5: [25, 32, 32, 32, 32], 2.5: [32, 32, 40, 40, 40], 4: [40, 40, 40, 40, 50], 6: [50, 50, 50, 63, 63], 10: [63, 63, 63, 75, 75], 16: [63, 75, 75, 75, 90],
+      25: [90, 90, 90, 110, 110], 35: [90, 110, 110, 110, 125], 50: [110, 110, 125, 125, 140], 70: [125, 125, 140, 160, 160], 95: [140, 140, 160, 160, 180],
+      120: [160, 160, 180, 180, 200], 150: [180, 180, 200, 200, 225], 185: [180, 200, 225, 225, 250], 240: [225, 225, 250, 250, _] }],
+  };
+  // Fuera de tabla: diámetro interior = Φ·√(f·n), f = 2,5 superficie, 3 empotrado o al aire, 4 enterrado («CALCULO SECCIONES1.pdf»)
+  const F_TUBO = { superficie: 2.5, empotrado: 3, aire: 3, enterrado: 4 };
+  function tubo({ sistema, S, n, phi }){
+    const [nombre, tabla, cols, rows] = TUBOS[sistema], ref = `ITC-BT-21, ${tabla}: ${nombre.toLowerCase()}`;
+    const i = sistema === 'enterrado' ? (n <= 6 ? 0 : n - 6) : n - 1, D = rows[S]?.[i] ?? null;
+    const r = { D, ref, Dint: null, f: F_TUBO[sistema] };
+    if (D == null && phi > 0) r.Dint = phi * Math.sqrt(F_TUBO[sistema] * n);
+    return r;
+  }
+
+  /* ---------- Puesta a tierra (ITC-BT-18) ---------- */
+  // ITC-BT-18 tabla 5 (fórmulas) y tabla 4 (resistividad media). No están en los PDF del Drive: pendientes de comprobar con la ITC-BT-18
+  const ELECTRODOS = {
+    pica: ['Pica vertical', 'R = ρ / L', (rho, x) => rho / x, 'L', 'Longitud de la pica', 'm'],
+    placa: ['Placa enterrada', 'R = 0,8·ρ / P', (rho, x) => 0.8 * rho / x, 'P', 'Perímetro de la placa', 'm'],
+    conductor: ['Conductor enterrado horizontalmente', 'R = 2·ρ / L', (rho, x) => 2 * rho / x, 'L', 'Longitud del conductor', 'm'],
+  };
+  const RHO_TERRENOS = [['Terrenos cultivables y fértiles, terraplenes compactos y húmedos', 50], ['Terraplenes cultivables poco fértiles y otros terraplenes', 500], ['Suelos pedregosos desnudos, arenas secas permeables', 3000]];
+  function tierra({ tipo, rho, L, P, n = 1, Ia, UL }){
+    const [nombre, formula, fn, k] = ELECTRODOS[tipo], x = k === 'P' ? P : L, R1 = fn(rho, x), R = R1 / n;
+    const pasos = [{ t: `${nombre} (ITC-BT-18, tabla 5)`, f: `${formula} = ${formula.includes('0,8') ? '0,8·' : formula.includes('2·') ? '2·' : ''}${nf(rho)} / ${nf(x)} = ${nf(R1)} Ω` }];
+    if (n > 1) pasos.push({ t: `${n} electrodos en paralelo, separados al menos su longitud (aproximación: R / n)`, f: `R = ${nf(R1)} / ${n} = ${nf(R)} Ω` });
+    const r = { R, pasos, refs: ['ITC-BT-18: instalaciones de puesta a tierra (tabla 5, resistencia de los electrodos)'] };
+    if (Ia > 0 && UL > 0) {
+      r.Uc = R * Ia; r.Rmax = UL / Ia; r.cumple = r.Uc <= UL + 1e-9;
+      pasos.push({ t: `Tensión de contacto con un diferencial de ${nf(Ia * 1000, 0)} mA`, f: `Uc = R·Ia = ${nf(R)}·${nf(Ia, 3)} = ${nf(r.Uc)} V ${r.cumple ? '≤' : '>'} ${UL} V → ${r.cumple ? 'cumple' : 'NO cumple'}` });
+      pasos.push({ t: 'Resistencia de tierra máxima admisible con ese diferencial', f: `R_máx = ${UL} / ${nf(Ia, 3)} = ${nf(r.Rmax)} Ω` });
+      r.refs.push('ITC-BT-18 / ITC-BT-24: tensión de contacto máxima 24 V en locales húmedos y viviendas, 50 V en locales secos');
+    }
+    return r;
+  }
+
+  /* ---------- Compensación de energía reactiva ---------- */
+  // Qc = P·(tg φ1 − tg φ2); capacidad por fase: triángulo C = Qc / (3·ω·U²), estrella C = Qc / (ω·U²) (U entre fases)
+  function reactiva({ P_kW, cos1, cos2, U, conexion, f = 50 }){
+    const tg1 = Math.tan(Math.acos(cos1)), tg2 = Math.tan(Math.acos(cos2)), Qc_kvar = Math.max(0, P_kW * (tg1 - tg2));
+    const w = 2 * Math.PI * f, C_uF = Qc_kvar * 1000 / ((conexion === 'triangulo' ? 3 : 1) * w * U * U) * 1e6;
+    const pasos = [{ t: 'Potencia reactiva de la batería de condensadores', f: `Qc = P·(tg φ1 − tg φ2) = ${nf(P_kW)}·(${nf(tg1, 4)} − ${nf(tg2, 4)}) = ${nf(Qc_kvar)} kvar` }];
+    if (Qc_kvar > 0) pasos.push({ t: `Capacidad por fase, condensadores en ${conexion === 'triangulo' ? 'triángulo' : 'estrella'} a ${nf(U, 0)} V y ${f} Hz`,
+      f: `C = Qc / (${conexion === 'triangulo' ? '3·' : ''}ω·U²) = ${nf(C_uF, 1)} µF` });
+    return { Qc_kvar, C_uF, tg1, tg2, pasos, refs: ['Teoría de circuitos: compensación del factor de potencia'] };
+  }
+
   // Lee números escritos a mano: «2,5», «2.5», «1.000,5». Con coma, los puntos son separadores de miles
   function parseNum(s){
     let t = String(s ?? '').trim().replace(/\s/g, '');
@@ -331,6 +392,6 @@ const CALCSEA = (() => {
   return { parseNum, SECCIONES, METODOS, DISP, izBase, fTemp, fAgrup, fCapas, fResist,
     intensidad, potencia, GAMMA, gamma, tServicio, caida, seccionPorCaida, LINEAS, CIRC_VIV, seccionProteccion,
     CALIBRES_PIA, CALIBRES_GG, proteccion, dimensionar, MANDA, nf,
-    CS_VIV, previsionEdificio, iccDesdePcc, K_CC, cortocircuito };
+    CS_VIV, previsionEdificio, iccDesdePcc, K_CC, cortocircuito, TUBOS, tubo, ELECTRODOS, RHO_TERRENOS, tierra, reactiva };
 })();
 if (typeof module !== 'undefined') module.exports = CALCSEA;

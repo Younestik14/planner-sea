@@ -170,3 +170,53 @@ test('enterrado: avisa de que no se aplica agrupamiento', () => {
   const r = C.dimensionar({ ...MOTOR, metodo: 'D', T: 25, rho: 2.5, directo: false });
   assert.ok(r.avisos.some(a => a.includes('agrupamiento')));
 });
+
+// ======== Fase 2 ========
+// Ejercicios resueltos de «3UT_CIE_Diseño instalaciones BT» (ITC-BT-10)
+test('coeficiente de simultaneidad (ITC-BT-10 tabla 1)', () => {
+  assert.equal(C.CS_VIV(1), 1); assert.equal(C.CS_VIV(4), 3.8); assert.equal(C.CS_VIV(14), 11.3);
+  assert.equal(C.CS_VIV(21), 15.3); near(C.CS_VIV(24), 16.8, 1e-9);
+});
+
+test('previsión: ejercicio 3.1 (12 básicas + 2 elevadas)', () => {
+  near(C.previsionEdificio({ basicas: 12, elevadas: 2 }).total, 70544, 1);
+});
+
+test('previsión: ejercicio 3.2 (locales y oficinas, con mínimos)', () => {
+  const r = C.previsionEdificio({ locales: [{ m2: 25 }, { m2: 50 }], oficinas: [{ m2: 200, P: 35000 }, { m2: 150, P: 13500 }] });
+  assert.equal(r.total, 58450);
+});
+
+test('previsión: ejercicio 3.3 (edificio completo)', () => {
+  const r = C.previsionEdificio({ basicas: 20, elevadas: 4, sg: [{ label: 'Alumbrado de escalera', P: 800 }, { label: 'Ascensores', P: 12000 }, { label: 'Bomba de agua', P: 3000 }],
+    garajes: [{ m2: 550, forzada: false }], locales: [{ m2: 125 }, { m2: 125 }, { m2: 125 }, { m2: 125 }] });
+  near(r.CS, 16.8, 1e-9); near(r.total, 177560, 1);
+});
+
+test('previsión: industria con mínimo y tarifa nocturna', () => {
+  assert.equal(C.previsionEdificio({ industrias: [{ m2: 50 }] }).total, 10350);
+  assert.equal(C.previsionEdificio({ basicas: 10, nocturna: true }).total, 57500);
+});
+
+test('cortocircuito: Icc desde la potencia de cortocircuito', () => {
+  near(C.iccDesdePcc({ Pcc_MVA: 500, U: 400 }), 721.69, 0.01);
+});
+
+test('cortocircuito: comprobación térmica y poder de corte', () => {
+  let r = C.cortocircuito({ Icc_kA: 6, S: 16, mat: 'cu', aisl: 'PVC', t: 0.1, pdc_kA: 4.5 });
+  near(r.Smin, 16.5, 0.01); assert.equal(r.cumpleTermico, false); assert.equal(r.cumplePdc, false);
+  r = C.cortocircuito({ Icc_kA: 6, S: 25, mat: 'cu', aisl: 'PVC', t: 0.1, pdc_kA: 6 });
+  assert.equal(r.cumpleTermico, true); assert.equal(r.cumplePdc, true);
+  near(r.tmax, (115 * 25 / 6000) ** 2, 1e-9);
+});
+
+test('sección de un motor: Ib × 1,25 (ITC-BT-47)', () => {
+  const r = C.dimensionar({ ...MOTOR, receptor: 'motor' });
+  near(r.Ib, 63.68, 0.01); assert.equal(r.S, 25); assert.equal(r.In, 80); assert.equal(r.manda, 'proteccion');
+  assert.ok(r.pasos.some(p => p.t.includes('ITC-BT-47')));
+});
+
+test('lámparas de descarga: Ib × 1,8 (ITC-BT-44)', () => {
+  const r = C.dimensionar({ ...MOTOR, linea: 'alum', P: 3000, cos: 0.9, sistema: 'mono', U: 230, receptor: 'descarga' });
+  near(r.Ib, 3000 / (230 * 0.9) * 1.8, 1e-9);
+});

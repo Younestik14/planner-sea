@@ -210,10 +210,13 @@ const CALCSEA = (() => {
     if (!linea || (viv && !circ)) return { ok: false, error: 'Elige el tipo de línea' + (viv ? ' y el circuito' : '') };
     const cos = viv ? 1 : d.cos, cargados = d.sistema === 'tri' ? 3 : 2, enterrado = d.metodo === 'D';
     // Vivienda: Ib = In del PIA del circuito y cos φ = 1, el caso más desfavorable (ITC-BT-25 y Guía Anexo 2, ejemplo 3)
-    const Ib = viv ? circ.In : Number.isFinite(d.I) && d.I > 0 ? d.I : intensidad({ sistema: d.sistema, P: d.P, U: d.U, cos });
+    let Ib = viv ? circ.In : Number.isFinite(d.I) && d.I > 0 ? d.I : intensidad({ sistema: d.sistema, P: d.P, U: d.U, cos });
     if (viv) pasos.push({ t: `${circ.label}: la intensidad de cálculo es la del PIA del circuito y se toma cos φ = 1 (caso más desfavorable)`, f: `Ib = ${circ.In} A` });
     else if (Number.isFinite(d.I) && d.I > 0) pasos.push({ t: 'Intensidad de cálculo dada', f: `Ib = ${nf(Ib)} A` });
     else pasos.push({ t: 'Intensidad de cálculo', f: `Ib = P / (${d.sistema === 'tri' ? '√3·' : ''}U·cos φ) = ${nf(d.P, 0)} / (${d.sistema === 'tri' ? '√3·' : ''}${d.U}·${nf(cos)}) = ${nf(Ib)} A` });
+    // ITC-BT-47 (motores ×1,25) e ITC-BT-44 (lámparas de descarga ×1,8): se mayora la intensidad de cálculo
+    const MAYOR = { motor: [1.25, 'Línea de motor: se mayora un 125 % la intensidad (ITC-BT-47; si hay varios motores, solo el de mayor potencia)'], descarga: [1.8, 'Lámparas o tubos de descarga: se mayora la potencia en 1,8 (ITC-BT-44)'] }[!viv && d.receptor];
+    if (MAYOR) { const I0 = Ib; Ib = I0 * MAYOR[0]; pasos.push({ t: MAYOR[1], f: `Ib = ${nf(I0)} · ${nf(MAYOR[0])} = ${nf(Ib)} A` }); }
 
     let ft, fa = { f: 1, ntab: 1 }, fc = 1, fr = { f: 1 };
     try {
@@ -264,7 +267,58 @@ const CALCSEA = (() => {
       `${linea.ref}: caída de tensión máxima ${nf(pctMax, 1)} %`, 'Guía técnica de aplicación del REBT, Anexo 2 (cálculo de caídas de tensión)',
       'UNE-HD 60364-4-43: Ib ≤ In ≤ Iz e I2 ≤ 1,45·Iz', 'ITC-BT-19 (tabla 2): conductor de protección');
     if (viv) refs.push('ITC-BT-25 (tabla 1): circuitos de vivienda');
+    if (MAYOR) refs.push(d.receptor === 'motor' ? 'ITC-BT-47: motores' : 'ITC-BT-44: receptores de alumbrado');
     return { ok: true, S, manda, Ib, Iz, izb, factor, f: { temp: ft.f, agrup: fa.f, capas: fc, resist: fr.f }, dU: c.dU, pct: c.pct, pctMax, In: p.In, Sp, pasos, refs, avisos };
+  }
+
+  /* ---------- Previsión de cargas (ITC-BT-10) ---------- */
+  // Fuente: ITC-BT-10 tabla 1, reproducida en «3UT_CIE_Diseño instalaciones BT SIN SOL.pdf» tabla 3.1
+  const CS_TABLA = [1, 2, 3, 3.8, 4.6, 5.4, 6.2, 7, 7.8, 8.5, 9.2, 9.9, 10.6, 11.3, 11.9, 12.5, 13.1, 13.7, 14.3, 14.8, 15.3];
+  const CS_VIV = n => n <= 0 ? 0 : n <= 21 ? CS_TABLA[n - 1] : 15.3 + (n - 21) * 0.5;
+  const P_GRADO = { basica: 5750, elevada: 9200 };
+  // ITC-BT-10 apdos. 3.3, 3.4 y 4: W/m² y planta, y mínimo por local (coeficiente de simultaneidad 1)
+  const LOCALES = { locales: ['Local comercial', 100, 3450], oficinas: ['Oficina', 100, 3450], industrias: ['Industria', 125, 10350] };
+  function previsionEdificio(e){
+    const pasos = [], b = e.basicas || 0, el = e.elevadas || 0, n = b + el;
+    let Pviv = 0, CS = 0;
+    if (n) {
+      CS = e.nocturna ? n : CS_VIV(n);
+      const media = (b * P_GRADO.basica + el * P_GRADO.elevada) / n;
+      Pviv = CS * media;
+      pasos.push({ t: `Viviendas: ${b} de electrificación básica (5 750 W) y ${el} elevada (9 200 W)`, f: `media = (${b}·5 750 + ${el}·9 200) / ${n} = ${nf(media)} W` });
+      pasos.push({ t: e.nocturna ? 'Tarifa nocturna: coeficiente de simultaneidad = nº de viviendas' : `Coeficiente de simultaneidad para ${n} viviendas (ITC-BT-10 tabla 1)`, f: `P_viv = ${nf(CS, 2)} · ${nf(media)} = ${nf(Pviv)} W` });
+    }
+    const sg = e.sg || [], Psg = sg.reduce((s, x) => s + (x.P || 0), 0);
+    if (sg.length) pasos.push({ t: 'Servicios generales, sin simultaneidad (CS = 1)', f: `P_SG = ${sg.map(x => nf(x.P, 0)).join(' + ')} = ${nf(Psg, 0)} W` });
+    const sumar = k => (e[k] || []).reduce((s, x) => {
+      const [nom, wm2, min] = LOCALES[k], porSup = wm2 * x.m2, P = Math.max(x.P || 0, porSup, min);
+      pasos.push({ t: `${nom} de ${nf(x.m2)} m²${x.P ? ` (declarada ${nf(x.P, 0)} W)` : ''}: ${wm2} W/m², mínimo ${nf(min, 0)} W`, f: `P = ${nf(P, 0)} W` });
+      return s + P;
+    }, 0);
+    const Plocales = sumar('locales') + sumar('oficinas'), Pindustrias = sumar('industrias');
+    const Pgarajes = (e.garajes || []).reduce((s, g) => {
+      const wm2 = g.forzada ? 20 : 10, P = Math.max(wm2 * g.m2, 3450);
+      pasos.push({ t: `Garaje de ${nf(g.m2)} m² con ventilación ${g.forzada ? 'forzada (20 W/m²)' : 'natural (10 W/m²)'}, mínimo 3 450 W`, f: `P = ${nf(P, 0)} W` });
+      return s + P;
+    }, 0);
+    const total = Pviv + Psg + Plocales + Pindustrias + Pgarajes;
+    pasos.push({ t: 'Previsión total del edificio', f: `P = ${nf(total, 0)} W = ${nf(total / 1000, 3)} kW` });
+    return { Pviv, CS, Psg, Plocales, Pindustrias, Pgarajes, total, pasos, refs: ['ITC-BT-10: previsión de cargas para suministros en baja tensión', 'ITC-BT-10 tabla 1: coeficiente de simultaneidad'] };
+  }
+
+  /* ---------- Cortocircuito ---------- */
+  // Pcc = √3·U·Icc («CALCULO SECCIONES1.pdf»)
+  const iccDesdePcc = ({ Pcc_MVA, U }) => Pcc_MVA * 1e6 / (Math.sqrt(3) * U) / 1000; // kA
+  // k de la UNE-HD 60364-4-43 (tabla 43A); Cu 115/143 comprobados en «CALCULO SECCIONES1.pdf»
+  const K_CC = { cu: { PVC: 115, XLPE: 143 }, al: { PVC: 76, XLPE: 94 } };
+  function cortocircuito({ Icc_kA, S, mat, aisl, t, pdc_kA }){
+    const k = K_CC[mat][aisl], I = Icc_kA * 1000, Smin = I * Math.sqrt(t) / k, tmax = (k * S / I) ** 2;
+    const cumpleTermico = S >= Smin - 1e-9, cumplePdc = pdc_kA == null ? null : pdc_kA >= Icc_kA - 1e-9;
+    const pasos = [
+      { t: `Comprobación térmica del cable (k = ${k} para ${mat === 'cu' ? 'cobre' : 'aluminio'} ${aisl})`, f: `S ≥ Icc·√t / k = ${nf(I, 0)}·√${nf(t, 3)} / ${k} = ${nf(Smin)} mm² → ${nf(S, 1)} mm² ${cumpleTermico ? 'cumple' : 'NO cumple'}` },
+      { t: 'Tiempo máximo que aguanta el cable ese cortocircuito', f: `t_máx = (k·S / Icc)² = ${nf(tmax, 3)} s` }];
+    if (pdc_kA != null) pasos.push({ t: 'Poder de corte de la protección', f: `PdC = ${nf(pdc_kA, 1)} kA ${cumplePdc ? '≥' : '<'} Icc = ${nf(Icc_kA, 2)} kA → ${cumplePdc ? 'cumple' : 'NO cumple'}` });
+    return { k, Smin, tmax, cumpleTermico, cumplePdc, pasos, refs: ['UNE-HD 60364-4-43: comprobación térmica S ≥ Icc·√t / k', 'ITC-BT-22: el poder de corte debe ser ≥ la Icc en el punto de instalación'] };
   }
 
   // Lee números escritos a mano: «2,5», «2.5», «1.000,5». Con coma, los puntos son separadores de miles
@@ -276,6 +330,7 @@ const CALCSEA = (() => {
 
   return { parseNum, SECCIONES, METODOS, DISP, izBase, fTemp, fAgrup, fCapas, fResist,
     intensidad, potencia, GAMMA, gamma, tServicio, caida, seccionPorCaida, LINEAS, CIRC_VIV, seccionProteccion,
-    CALIBRES_PIA, CALIBRES_GG, proteccion, dimensionar, MANDA, nf };
+    CALIBRES_PIA, CALIBRES_GG, proteccion, dimensionar, MANDA, nf,
+    CS_VIV, previsionEdificio, iccDesdePcc, K_CC, cortocircuito };
 })();
 if (typeof module !== 'undefined') module.exports = CALCSEA;

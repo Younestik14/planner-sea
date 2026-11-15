@@ -511,7 +511,6 @@ function wikiHTML(){
   else main = `<div class="card-box wmain">
       <div class="row" style="flex-wrap:wrap"><h2 class="grow" style="margin:0">${esc(page.title)}</h2>
         <button class="ico" title="${isFav('w', page.id) ? 'Quitar de accesos directos' : 'Añadir a accesos directos de Inicio'}" onclick="toggleFav('w','${page.id}','${S.pid}')">${ic('star', isFav('w', page.id) ? 'fav' : '')}</button>
-        <button class="btn sm ghost" onclick="openCalc()">${ic('calculator', 'sm')} Calculadoras</button>
         <button class="btn sm ghost" onclick="loadRevs()">${ic('history', 'sm')} Historial</button>
         ${E ? `<button class="btn sm" onclick="S.wedit={id:'${page.id}',title:S.wiki.find(w=>w.id==='${page.id}').title,body:S.wiki.find(w=>w.id==='${page.id}').body};render()">${ic('pencil', 'sm')} Editar</button><button class="btn sm bad" onclick="delWiki('${page.id}')">${ic('trash-2', 'sm')}</button>` : ''}</div>
       <p class="small mut" style="margin:4px 0 14px">Última edición: ${esc(pname(page.updated_by))} · ${ago(page.updated_at)}</p>

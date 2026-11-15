@@ -98,59 +98,6 @@ async function createWikiPage(){
   if (S.wnew.tpl !== 'blank') track('f:wikitemplate');
 }
 
-/* ============ 11 · Calculadoras eléctricas ============ */
-// Conductividad γ en m/(Ω·mm²) según material y temperatura del conductor
-const GAMMA = { cu20: ['Cobre a 20 °C', 56], cu70: ['Cobre a 70 °C (PVC)', 48], cu90: ['Cobre a 90 °C (XLPE/EPR)', 44], al20: ['Aluminio a 20 °C', 35], al70: ['Aluminio a 70 °C (PVC)', 30], al90: ['Aluminio a 90 °C (XLPE/EPR)', 28] };
-const SECTIONS = [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240, 300];
-const nf = (v, d = 2) => Number.isFinite(v) ? v.toLocaleString('es-ES', { maximumFractionDigits: d }) : '—';
-const k3 = tri => tri ? Math.sqrt(3) : 2; // factor de la línea: 2 (monofásica, ida y vuelta) o √3 (trifásica)
-// Fórmulas simplificadas sin reactancia, válidas para secciones habituales en baja tensión
-const CALC = {
-  intensidad: v => { const I = v.P / ((v.tri ? Math.sqrt(3) : 1) * v.U * v.cos); return { I, txt: `I = ${nf(I)} A` }; },
-  potencia: v => { const P = (v.tri ? Math.sqrt(3) : 1) * v.U * v.I * v.cos; return { P, txt: `P = ${nf(P, 0)} W (${nf(P / 1000)} kW)` }; },
-  caida: v => { const dU = k3(v.tri) * v.L * v.I * v.cos / (GAMMA[v.g][1] * v.S), pct = dU / v.U * 100; return { dU, pct, txt: `ΔU = ${nf(dU)} V (${nf(pct)} %)${v.max ? (pct <= v.max ? ` · cumple el ${nf(v.max, 1)} %` : ` · NO cumple el ${nf(v.max, 1)} %`) : ''}` }; },
-  seccion: v => { const Smin = k3(v.tri) * v.L * v.I * v.cos / (GAMMA[v.g][1] * v.max / 100 * v.U), S = SECTIONS.find(s => s >= Smin);
-    return { Smin, S, txt: `Sección mínima por caída de tensión: ${nf(Smin)} mm² → normalizada ${S ? nf(S, 1) + ' mm²' : 'más de 300 mm²'}` }; },
-};
-const CALC_TABS = [['intensidad', 'Intensidad'], ['potencia', 'Potencia'], ['caida', 'Caída de tensión'], ['seccion', 'Sección por caída']];
-function openCalc(){ S.calc ||= { t: 'caida', v: { tri: true, U: 400, P: 10000, I: 16, cos: 0.9, L: 30, S: 6, g: 'cu70', max: 3 } }; openModal('calc'); track('f:calc'); }
-function calcHTML(){
-  const C = S.calc, v = C.v, f = (k, label, unit) => `<div><label>${label}</label><div class="row" style="gap:4px"><input type="text" inputmode="decimal" value="${Number.isFinite(v[k]) ? String(v[k]).replace('.', ',') : ''}" oninput="S.calc.v.${k}=parseFloat(this.value.replace(',','.'));calcUpdate()"><span class="small mut" style="min-width:28px">${unit}</span></div></div>`;
-  const fields = { intensidad: ['P', 'U', 'cos'], potencia: ['I', 'U', 'cos'], caida: ['L', 'I', 'cos', 'S', 'U', 'g', 'max'], seccion: ['L', 'I', 'cos', 'U', 'g', 'max'] }[C.t];
-  const F = { P: f('P', 'Potencia', 'W'), U: f('U', 'Tensión', 'V'), cos: f('cos', 'cos φ', ''), I: f('I', 'Intensidad', 'A'), L: f('L', 'Longitud de la línea', 'm'), S: f('S', 'Sección', 'mm²'),
-    g: `<div><label>Conductor</label><select onchange="S.calc.v.g=this.value;calcUpdate()">${Object.entries(GAMMA).map(([k, [n, gg]]) => `<option value="${k}" ${v.g === k ? 'selected' : ''}>${n} · γ=${gg}</option>`).join('')}</select></div>`,
-    max: `<div><label>Caída máxima admitida</label><div class="row" style="gap:4px"><select onchange="S.calc.v.max=parseFloat(this.value);calcUpdate()">${[[1, 'DI: 1 %'], [1.5, 'DI: 1,5 %'], [3, 'Alumbrado: 3 %'], [5, 'Otros usos: 5 %']].map(([k, n]) => `<option value="${k}" ${v.max === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div>` };
-  const canIns = adminOf() && S.view === 'wiki' && S.wid;
-  return `<div class="mod md"><div class="mh"><h3>${ic('calculator')} Calculadoras eléctricas</h3><button class="ico" onclick="closeModal()">${ic('x')}</button></div><div class="mb">
-    <div class="tabs" style="position:static;padding:0;margin:4px 0 6px">${CALC_TABS.map(([k, n]) => `<button class="tab ${C.t === k ? 'on' : ''}" onclick="S.calc.t='${k}';keep(renderModal)">${n}</button>`).join('')}</div>
-    <div class="seg" style="margin-top:10px"><button class="${v.tri ? '' : 'on'}" onclick="S.calc.v.tri=false;S.calc.v.U=230;keep(renderModal)">Monofásica 230 V</button><button class="${v.tri ? 'on' : ''}" onclick="S.calc.v.tri=true;S.calc.v.U=400;keep(renderModal)">Trifásica 400 V</button></div>
-    <div class="grid4" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">${fields.map(k => F[k]).join('')}</div>
-    <div class="calc-res" id="calc-res"></div>
-    <p class="small mut">${C.t === 'caida' || C.t === 'seccion' ? `Fórmula: ΔU = ${v.tri ? '√3' : '2'}·L·I·cos φ / (γ·S), sin reactancia (válida para secciones habituales en BT). Límites orientativos: derivación individual 1 % o 1,5 % (ITC-BT-15), alumbrado 3 % y demás usos 5 % (ITC-BT-19). Comprueba también la <b>intensidad admisible</b> (tablas de la ITC-BT-19) y las secciones mínimas (ITC-BT-25): esta calculadora no las incluye.`
-      : `Fórmula: ${C.t === 'intensidad' ? `I = P / (${v.tri ? '√3·' : ''}U·cos φ)` : `P = ${v.tri ? '√3·' : ''}U·I·cos φ`}.`}</p>
-    <div class="row" style="margin-top:10px"><span class="grow"></span>${canIns ? `<button class="btn pri" onclick="insertCalc()">${ic('file-plus', 'sm')} Insertar en la nota</button>` : `<span class="small mut">${adminOf() ? 'Abre una página de Notas para poder insertar el resultado.' : ''}</span>`}</div></div></div>`;
-}
-function calcUpdate(){
-  const el = $('#calc-res'); if (!el) return;
-  const v = S.calc.v, need = { intensidad: ['P', 'U', 'cos'], potencia: ['I', 'U', 'cos'], caida: ['L', 'I', 'cos', 'S', 'U'], seccion: ['L', 'I', 'cos', 'U', 'max'] }[S.calc.t];
-  const bad = need.some(k => !(v[k] > 0)) || v.cos > 1;
-  el.className = 'calc-res' + (bad ? ' err' : '');
-  if (bad) { el.textContent = v.cos > 1 ? 'El cos φ debe estar entre 0 y 1' : 'Rellena todos los datos con valores mayores que 0'; return; }
-  const r = CALC[S.calc.t](v); S.calc.r = r;
-  el.className = 'calc-res' + (S.calc.t === 'caida' && v.max && r.pct > v.max ? ' err' : ' ok');
-  el.textContent = r.txt;
-}
-async function insertCalc(){
-  const v = S.calc.v, r = S.calc.r, w = S.wiki.find(x => x.id === S.wid); if (!r || !w) return;
-  const name = CALC_TABS.find(x => x[0] === S.calc.t)[1], line = v.tri ? 'trifásica' : 'monofásica';
-  const data = { intensidad: `P = ${nf(v.P, 0)} W · U = ${v.U} V · cos φ = ${nf(v.cos)}`, potencia: `I = ${nf(v.I)} A · U = ${v.U} V · cos φ = ${nf(v.cos)}`,
-    caida: `L = ${nf(v.L)} m · I = ${nf(v.I)} A · cos φ = ${nf(v.cos)} · S = ${nf(v.S, 1)} mm² · ${GAMMA[v.g][0]} (γ = ${GAMMA[v.g][1]}) · U = ${v.U} V`,
-    seccion: `L = ${nf(v.L)} m · I = ${nf(v.I)} A · cos φ = ${nf(v.cos)} · ${GAMMA[v.g][0]} (γ = ${GAMMA[v.g][1]}) · U = ${v.U} V · ΔU máx = ${nf(v.max, 1)} %` }[S.calc.t];
-  const block = `\n\n### 🧮 ${name} (línea ${line})\n- Datos: ${data}\n- **Resultado: ${r.txt}**\n- Calculado el ${new Date().toLocaleDateString('es-ES')} por ${pname(S.me.id)}`;
-  await q(sb.from('wiki_pages').update({ body: (w.body || '') + block }).eq('id', w.id));
-  w.body = (w.body || '') + block; closeModal(); toast('Resultado añadido a la nota'); track('f:calcinsert');
-}
-
 /* ============ 12 · Lista de material ============ */
 const MAT_STATUS = { pendiente: ['Pendiente', 'warn'], pedido: ['Pedido', 'acc'], recibido: ['Recibido', 'ok'] };
 const eur = v => Number.isFinite(v) ? v.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : '—';

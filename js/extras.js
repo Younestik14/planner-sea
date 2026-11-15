@@ -39,7 +39,7 @@ function palItems(){
   add('book-open', 'Apuntes', '', () => go('apuntes'));
   add('sun', 'Mi plan de hoy', '', () => openDay(today()));
   if (isOwner()) add('user-check', 'Seguimiento', '', () => go('track'));
-  add('calculator', 'Calculadoras eléctricas', 'Intensidad, potencia, caída de tensión, sección', () => openCalc());
+  add('calculator', 'Cálculos SEA', 'Asistente de cálculos eléctricos según el REBT', () => go('calc'));
   if (proj() && adminOf()) add('plus', 'Nueva tarea', proj().name, async () => { if (S.view !== 'board') await go('board'); $('.addt input')?.focus(); });
   if (canCreate()) add('folder-plus', 'Nuevo proyecto', '', () => openModal('project-new'));
   if (isOwner()) { add('users', 'Miembros y permisos', '', () => openModal('members')); add('columns-3', 'Comparar proyectos', '', () => go('compare'));

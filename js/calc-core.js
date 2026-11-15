@@ -266,7 +266,14 @@ const CALCSEA = (() => {
     return { ok: true, S, manda, Ib, Iz, izb, factor, f: { temp: ft.f, agrup: fa.f, capas: fc, resist: fr.f }, dU: c.dU, pct: c.pct, pctMax, In: p.In, Sp, pasos, refs, avisos };
   }
 
-  return { SECCIONES, METODOS, DISP, izBase, fTemp, fAgrup, fCapas, fResist,
+  // Lee números escritos a mano: «2,5», «2.5», «1.000,5». Con coma, los puntos son separadores de miles
+  function parseNum(s){
+    let t = String(s ?? '').trim().replace(/\s/g, '');
+    if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+    return /^[-+]?\d*\.?\d+$/.test(t) ? parseFloat(t) : NaN;
+  }
+
+  return { parseNum, SECCIONES, METODOS, DISP, izBase, fTemp, fAgrup, fCapas, fResist,
     intensidad, potencia, GAMMA, gamma, tServicio, caida, seccionPorCaida, LINEAS, CIRC_VIV, seccionProteccion,
     CALIBRES_PIA, CALIBRES_GG, proteccion, dimensionar, MANDA, nf };
 })();

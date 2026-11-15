@@ -155,3 +155,12 @@ test('dimensionar: enterrado con resistividad', () => {
   assert.equal(r.ok, true); near(r.factor, 1, 1e-9);
   assert.ok(r.refs.some(x => x.includes('C.52.2 bis')));
 });
+
+// ---- Tarea 4 · lectura de números escritos por el usuario ----
+test('parseNum acepta coma o punto decimal', () => {
+  assert.equal(C.parseNum('2,5'), 2.5);
+  assert.equal(C.parseNum('2.5'), 2.5);
+  assert.equal(C.parseNum(' 1.000,5 '), 1000.5);
+  assert.ok(Number.isNaN(C.parseNum('')));
+  assert.ok(Number.isNaN(C.parseNum('abc')));
+});

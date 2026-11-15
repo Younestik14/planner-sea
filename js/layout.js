@@ -29,7 +29,7 @@ function render(){
     <button class="${S.view === 'mine' ? 'on' : ''}" onclick="go('mine')">${ic('list-todo', 'lg')}Tareas</button>
     <button class="${S.view === 'week' ? 'on' : ''}" onclick="go('week')">${ic('calendar-range', 'lg')}Calendario</button>
     <button class="${S.view === 'timetable' ? 'on' : ''}" onclick="go('timetable')">${ic('clock', 'lg')}Horario</button>
-    <button class="${PVIEWS.some(v => v[0] === S.view) || ['tablon', 'apuntes', 'track'].includes(S.view) ? 'on' : ''}" onclick="toggleSide(true)">${ic('menu', 'lg')}Más</button>
+    <button class="${PVIEWS.some(v => v[0] === S.view) || ['tablon', 'apuntes', 'track', 'calc'].includes(S.view) ? 'on' : ''}" onclick="toggleSide(true)">${ic('menu', 'lg')}Más</button>
     <button onclick="togglePanel('notifs')">${ic('bell', 'lg')}Avisos${unread ? `<b>${unread}</b>` : ''}</button>
   </nav>
   ${S.selMode && S.sel.size ? bulkBarHTML() : ''}`;
@@ -91,6 +91,8 @@ function sideHTML(){
     ${nav('timetable', 'clock', 'Horario')}
     ${S.used?.tablon || isOwner() || S.view === 'tablon' ? nav('tablon', 'pin', 'Tablón') : ''}
     ${S.used?.apuntes || isOwner() || S.view === 'apuntes' ? nav('apuntes', 'book-open', 'Apuntes') : ''}
+    <h4>Herramientas</h4>
+    ${nav('calc', 'calculator', 'Cálculos SEA')}
     <h4>Proyectos ${canCreate() ? `<button class="ico" title="Nuevo proyecto" onclick="openModal('project-new')">${ic('plus', 'sm')}</button>` : ''}</h4>
     ${act.map(pj).join('') || '<p class="mut small" style="padding:0 10px">Aún no hay proyectos activos</p>'}
     ${tpl.length && canCreate() ? `<h4>Plantillas</h4>${tpl.map(p => `<button class="pj ${p.id === S.pid && pv ? 'on' : ''}" style="--c:${esc(p.color)}" onclick="goProject('${p.id}')"><div class="n">${ic('layers', 'sm')}<span>${esc(p.name)}</span></div></button>`).join('')}` : ''}
@@ -117,6 +119,7 @@ function mainHTML(){
   if (S.view === 'track' && isOwner()) return trackHTML();
   if (S.view === 'audit') return auditHTML();
   if (S.view === 'usage') return usageHTML();
+  if (S.view === 'calc') return calcSeaHTML();
   const p = proj();
   if (!p) return emptyState('folder-kanban', 'No hay proyectos todavía', canCreate() ? 'Crea el primero con el botón + del menú.' : 'Cuando se cree uno, aparecerá aquí.');
   const view = { material: materialHTML, issues: issuesHTML, deliv: delivHTML, plans: plansHTML, decide: decideHTML, board: boardHTML, list: listHTML, gantt: ganttHTML, cal: calHTML, diary: diaryHTML, wiki: wikiHTML, team: teamHTML, stats: statsHTML, files: filesHTML, trash: trashHTML }[S.view];
@@ -247,14 +250,13 @@ async function readAll(){ S.notifs.forEach(n => n.read = true); render(); await 
 function renderModal(){
   const m = S.modal;
   if (!m) { $('#modal').innerHTML = ''; return; }
-  const extra = { minutes: minutesHTML, agreements: agreementsHTML, wikinew: wikiNewHTML, calc: calcHTML, banner: bannerFormHTML, exam: examFormHTML, day: dayHTML, matimport: matImportHTML, docs: docsHTML, budget: budgetHTML, parts: partsModalHTML, issue: issueFormHTML, planner: plannerHTML, wa: waHTML, sessions: sessionsModalHTML, org: orgHTML, group: groupModalHTML, memoria: memoriaHTML, decnew: decNewHTML, deck: deckOptsHTML }[m];
+  const extra = { minutes: minutesHTML, agreements: agreementsHTML, wikinew: wikiNewHTML, banner: bannerFormHTML, exam: examFormHTML, day: dayHTML, matimport: matImportHTML, docs: docsHTML, budget: budgetHTML, parts: partsModalHTML, issue: issueFormHTML, planner: plannerHTML, wa: waHTML, sessions: sessionsModalHTML, org: orgHTML, group: groupModalHTML, memoria: memoriaHTML, decnew: decNewHTML, deck: deckOptsHTML }[m];
   const html = extra ? extra() : m === 'task' ? taskHTML() : m === 'members' ? membersHTML() : m === 'summary' ? summaryHTML() : m === 'keys' ? keysHTML() : m === 'profile' ? profileHTML()
              : projectFormHTML(m === 'project-edit' ? proj() : null);
   if (!html) { S.modal = null; $('#modal').innerHTML = ''; return; }
   const drawer = m === 'task' && pref('drawer', true);
   $('#modal').innerHTML = drawer ? `<div class="ov drawer">${html}</div>` : `<div class="ov" onclick="if(event.target===this)closeModal()">${html}</div>`;
   const c = $('#chatlist'); if (c) c.scrollTop = c.scrollHeight;
-  if (m === 'calc') calcUpdate();
   icons();
 }
 function openModal(m){ if (m === 'project-new') S.newPriv = false; S.modal = m; S.panel = null; closeSide(); render(); renderModal(); }

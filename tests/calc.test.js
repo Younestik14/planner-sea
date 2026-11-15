@@ -59,3 +59,48 @@ test('fResist', () => {
   assert.deepEqual(C.fResist({ rho: 1, directo: true }), { f: 1.5, rhoTab: 1 });
   assert.throws(() => C.fResist({ rho: 3.5, directo: false }));
 });
+
+// ---- Tarea 2 · ejemplos resueltos de la Guía técnica del REBT, Anexo 2 (Cu PVC → γ = 48, cos φ = 1, 230 V) ----
+const near = (a, b, tol) => assert.ok(Math.abs(a - b) <= tol, `${a} ≉ ${b}`);
+const porCaida = (I, L, pctMax) => C.seccionPorCaida({ sistema: 'mono', L, I, cos: 1, mat: 'cu', aisl: 'PVC', U: 230, pctMax });
+
+test('intensidad y potencia', () => {
+  assert.equal(C.intensidad({ sistema: 'mono', P: 5750, U: 230, cos: 1 }), 25);
+  near(C.intensidad({ sistema: 'tri', P: 145000, U: 400, cos: 0.9 }), 232.5, 0.1);
+  assert.equal(C.potencia({ sistema: 'mono', I: 16, U: 230, cos: 1 }), 3680);
+});
+
+test('sección por caída: Guía Anexo 2, ejemplos 2, 3 y 4', () => {
+  let r = porCaida(25, 10, 1); near(r.Smin, 4.52, 0.01); assert.equal(r.S, 6);
+  r = porCaida(25, 22, 1); near(r.Smin, 9.96, 0.01); assert.equal(r.S, 10);
+  r = porCaida(16, 30, 3); near(r.Smin, 2.90, 0.01); assert.equal(r.S, 4);
+  r = porCaida(25, 35, 1); near(r.Smin, 15.85, 0.01); assert.equal(r.S, 16);
+});
+
+test('sección por caída: Guía Anexo 2, ejemplo 5', () => {
+  assert.deepEqual([10, 22, 35].map(L => porCaida(40, L, 1).S), [10, 16, 35]);
+});
+
+test('caída de tensión sin reactancia', () => {
+  near(C.caida({ sistema: 'mono', L: 30, I: 16, cos: 1, S: 4, mat: 'cu', aisl: 'PVC', U: 230 }).pct, 2.17, 0.01);
+});
+
+test('caída de tensión con reactancia (S > 120 mm²)', () => {
+  const R = 100 / (44 * 185), X = 0.20 * R, esperado = Math.sqrt(3) * 300 * (R * 0.8 + X * 0.6);
+  near(C.caida({ sistema: 'tri', L: 100, I: 300, cos: 0.8, S: 185, mat: 'cu', aisl: 'XLPE', U: 400 }).dU, esperado, 1e-9);
+});
+
+test('cos φ = 1 con 240 mm²: la reactancia no suma y no hay NaN', () => {
+  const r = C.caida({ sistema: 'tri', L: 100, I: 300, cos: 1, S: 240, mat: 'cu', aisl: 'XLPE', U: 400 });
+  near(r.dU, Math.sqrt(3) * 300 * 100 / (44 * 240), 1e-9);
+});
+
+test('sección del conductor de protección (ITC-BT-19 tabla 2)', () => {
+  assert.deepEqual([10, 25, 35, 50, 95, 120].map(C.seccionProteccion), [10, 16, 16, 25, 50, 70]);
+});
+
+test('circuitos de vivienda (ITC-BT-25)', () => {
+  assert.deepEqual(C.CIRC_VIV.C2, { label: 'C2 · Tomas de uso general', S: 2.5, In: 16 });
+  assert.equal(C.CIRC_VIV.C3.S, 6);
+  assert.equal(C.CIRC_VIV.C12_C4.In, 20);
+});

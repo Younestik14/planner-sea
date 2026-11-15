@@ -125,6 +125,67 @@ const CALCSEA = (() => {
     return { f: F_RHO[directo ? 'directo' : 'tubo'][RHO_KEYS.indexOf(rhoTab)], rhoTab };
   }
 
-  return { SECCIONES, METODOS, DISP, izBase, fTemp, fAgrup, fCapas, fResist };
+  /* ---------- Intensidad, potencia y caída de tensión ---------- */
+  const kSis = sistema => sistema === 'tri' ? Math.sqrt(3) : 1;
+  const intensidad = ({ sistema, P, U, cos }) => P / (kSis(sistema) * U * cos);
+  const potencia = ({ sistema, I, U, cos }) => kSis(sistema) * U * I * cos;
+
+  // Fuente: Guía técnica REBT, Anexo 2 (sep 03 R1), tabla 3. Se toma la temperatura máxima de servicio: PVC 70 °C, XLPE/EPR 90 °C
+  const GAMMA = { cu: { 70: 48, 90: 44 }, al: { 70: 30, 90: 28 } };
+  const tServicio = aisl => aisl === 'XLPE' ? 90 : 70;
+  const gamma = (mat, aisl) => GAMMA[mat][tServicio(aisl)];
+  // Guía Anexo 2, tabla 1: reactancia aproximada como fracción de R (S ≤ 120 → despreciable)
+  const fX = S => S <= 120 ? 0 : S <= 150 ? 0.15 : S <= 185 ? 0.20 : 0.25;
+  const kLinea = sistema => sistema === 'tri' ? Math.sqrt(3) : 2; // trifásica: √3; monofásica: ida y vuelta
+
+  // ΔU = k·I·(R·cos φ + X·sen φ), Guía Anexo 2 fórmulas [1], [4] y [5]
+  function caida({ sistema, L, I, cos, S, mat, aisl, U }){
+    const R = L / (gamma(mat, aisl) * S), X = fX(S) * R, sen = Math.sqrt(Math.max(0, 1 - cos * cos));
+    const dU = kLinea(sistema) * I * (R * cos + X * sen);
+    return { dU, pct: dU / U * 100, R, X, gamma: gamma(mat, aisl) };
+  }
+
+  // Sección mínima por caída de tensión. Hasta 120 mm² se despeja (Guía Anexo 2, fórmulas [15] y [16]); por encima se prueba con reactancia
+  function seccionPorCaida({ sistema, L, I, cos, mat, aisl, U, pctMax }){
+    const e = pctMax / 100 * U, Smin = kLinea(sistema) * L * I * cos / (gamma(mat, aisl) * e);
+    let S = SECCIONES.find(s => s >= Smin - 1e-9) ?? null;
+    if (S && S > 120) S = SECCIONES.find(s => s > 120 && caida({ sistema, L, I, cos, S: s, mat, aisl, U }).pct <= pctMax + 1e-9) ?? null;
+    return { Smin, S };
+  }
+
+  /* ---------- Límites y secciones mínimas ---------- */
+  // Caídas máximas: Guía Anexo 2 tabla 6 (ITC-BT-14, ITC-BT-15 e ITC-BT-19). Secciones mínimas: ITC-BT-14 apdo. 3, ITC-BT-15 apdo. 3
+  const LINEAS = [
+    { id: 'lga_conc', label: 'LGA · contadores totalmente concentrados', pct: 0.5, ref: 'ITC-BT-14', Smin: { cu: 10, al: 16 } },
+    { id: 'lga_parc', label: 'LGA · centralizaciones parciales de contadores', pct: 1, ref: 'ITC-BT-14', Smin: { cu: 10, al: 16 } },
+    { id: 'di_unico', label: 'Derivación individual · suministro de un único usuario', pct: 1.5, ref: 'ITC-BT-15', Smin: { cu: 6, al: 6 } },
+    { id: 'di_conc', label: 'Derivación individual · contadores totalmente concentrados', pct: 1, ref: 'ITC-BT-15', Smin: { cu: 6, al: 6 } },
+    { id: 'di_parc', label: 'Derivación individual · centralizaciones parciales', pct: 0.5, ref: 'ITC-BT-15', Smin: { cu: 6, al: 6 } },
+    { id: 'viv', label: 'Circuito interior de vivienda (C1…C12)', pct: 3, ref: 'ITC-BT-19 / ITC-BT-25', Smin: null },
+    { id: 'alum', label: 'Circuito de alumbrado (no vivienda)', pct: 3, ref: 'ITC-BT-19', Smin: { cu: 1.5, al: 16 } },
+    { id: 'fuerza', label: 'Circuito de fuerza u otros usos (no vivienda)', pct: 5, ref: 'ITC-BT-19', Smin: { cu: 1.5, al: 16 } },
+  ];
+  // ITC-BT-25 tabla 1 (comprobada con «INSTALACION ELECTRICA VIVIENDAS.pdf» del Drive). C12: adicional de C3, C4 o C5
+  const CIRC_VIV = {
+    C1: { label: 'C1 · Iluminación', S: 1.5, In: 10 },
+    C2: { label: 'C2 · Tomas de uso general', S: 2.5, In: 16 },
+    C3: { label: 'C3 · Cocina y horno', S: 6, In: 25 },
+    C4: { label: 'C4 · Lavadora, lavavajillas y termo', S: 4, In: 20 },
+    C5: { label: 'C5 · Tomas de baño y auxiliares de cocina', S: 2.5, In: 16 },
+    C6: { label: 'C6 · Adicional de C1 (por cada 30 puntos de luz)', S: 1.5, In: 10 },
+    C7: { label: 'C7 · Adicional de C2 (por cada 20 tomas)', S: 2.5, In: 16 },
+    C8: { label: 'C8 · Calefacción eléctrica', S: 6, In: 25 },
+    C9: { label: 'C9 · Aire acondicionado', S: 6, In: 25 },
+    C10: { label: 'C10 · Secadora', S: 2.5, In: 16 },
+    C11: { label: 'C11 · Automatización, gestión técnica y seguridad', S: 1.5, In: 10 },
+    C12_C3: { label: 'C12 · Adicional de tipo C3', S: 6, In: 25 },
+    C12_C4: { label: 'C12 · Adicional de tipo C4', S: 4, In: 20 },
+    C12_C5: { label: 'C12 · Adicional de tipo C5 (más de 6 tomas)', S: 2.5, In: 16 },
+  };
+  // ITC-BT-19 apdo. 2.3, tabla 2: conductor de protección (mismo material que el de fase)
+  const seccionProteccion = S => S <= 16 ? S : S <= 35 ? 16 : SECCIONES.find(s => s >= S / 2 - 1e-9);
+
+  return { SECCIONES, METODOS, DISP, izBase, fTemp, fAgrup, fCapas, fResist,
+    intensidad, potencia, GAMMA, gamma, tServicio, caida, seccionPorCaida, LINEAS, CIRC_VIV, seccionProteccion };
 })();
 if (typeof module !== 'undefined') module.exports = CALCSEA;

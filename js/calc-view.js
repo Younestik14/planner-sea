@@ -14,7 +14,7 @@ const CS_CALCS = [
 const CS_PASOS = ['Tipo de línea', 'Carga', 'Cable', 'Condiciones', 'Longitud y protección'];
 const csNew = calc => ({ calc, paso: 0, err: {}, r: null,
   d: { linea: 'fuerza', circuito: 'C2', sistema: 'tri', U: '400', modo: 'P', P: '', I: '', cos: '0,9', mat: 'cu', aisl: 'XLPE', metodo: 'B1',
-    T: '40', disp: 1, receptor: 'general', tuboSis: 'empotrado', tuboS: '2.5', tuboN: '3', phi: '', tTipo: 'pica', rhoS: '', tx: '2', tn: '1', Ia: '0.03', UL: 24, Pk: '', cos1: '0,8', cos2: '0,95', conex: 'triangulo', ccModo: 'pcc', Pcc: '', Icc: '', Scc: '16', tcc: '0,1', pdc: '6', n: '1', capas: '1', rho: '2,5', directo: false, L: '', prot: 'pia', Ib: '', Iz: '' } });
+    T: '40', disp: 1, receptor: 'general', tuboSis: 'empotrado', tuboS: '2.5', tuboN: '3', phi: '', tTipo: 'pica', rhoS: '', tx: '2', tn: '1', Ia: '0.03', UL: 24, Pk: '', cos1: '0,8', cos2: '0,95', conex: 'triangulo', ccModo: 'tramos', Pcc: '', ccL1: '', ccS1: '95', ccL2: '', ccS2: '10', ccL3: '', ccS3: '2.5', Icc: '', Scc: '16', tcc: '0,1', pdc: '6', n: '1', capas: '1', rho: '2,5', directo: false, L: '', prot: 'pia', Ib: '', Iz: '' } });
 const csNum = k => CALCSEA.parseNum(S.cs.d[k]);
 const csNf = CALCSEA.nf;
 
@@ -216,24 +216,31 @@ function csPrevisionHTML(){
 /* ---------- Cortocircuito ---------- */
 const CS_PDC = [1.5, 3, 4.5, 6, 10, 15, 20, 25, 36, 50, 70, 100];
 function csCcHTML(){
-  const d = S.cs.d, n = csNum, Icc = d.ccModo === 'pcc' ? (n('Pcc') > 0 && n('U') > 0 ? CALCSEA.iccDesdePcc({ Pcc_MVA: n('Pcc'), U: n('U') }) : NaN) : n('Icc');
+  const d = S.cs.d, n = csNum;
+  const tramos = [['LGA', 1], ['Derivación individual', 2], ['Circuito', 3]].filter(([, i]) => n('ccL' + i) > 0).map(([nombre, i]) => ({ nombre, L: n('ccL' + i), S: +d['ccS' + i], mat: d.mat }));
+  const rt = d.ccModo === 'tramos' && tramos.length ? CALCSEA.iccTramos({ U: 230, tramos }) : null;
+  const Icc = d.ccModo === 'pcc' ? (n('Pcc') > 0 && n('U') > 0 ? CALCSEA.iccDesdePcc({ Pcc_MVA: n('Pcc'), U: n('U') }) : NaN) : d.ccModo === 'tramos' ? (rt ? rt.Icc_A / 1000 : NaN) : n('Icc');
   const t = n('tcc'), S_ = +d.Scc, ok = Icc > 0 && t > 0 && t <= 5;
   const r = ok && CALCSEA.cortocircuito({ Icc_kA: Icc, S: S_, mat: d.mat, aisl: d.aisl, t, pdc_kA: d.pdc ? +d.pdc : null });
-  const pasos = ok ? [...(d.ccModo === 'pcc' ? [{ t: 'Corriente de cortocircuito a partir de la potencia de cortocircuito', f: `Icc = Pcc / (√3·U) = ${csNf(n('Pcc'))}·10⁶ / (√3·${csNf(n('U'))}) = ${csNf(Icc)} kA` }] : []), ...r.pasos] : [];
+  const pasos = ok ? [...(rt ? rt.pasos : []), ...(d.ccModo === 'pcc' ? [{ t: 'Corriente de cortocircuito a partir de la potencia de cortocircuito', f: `Icc = Pcc / (√3·U) = ${csNf(n('Pcc'))}·10⁶ / (√3·${csNf(n('U'))}) = ${csNf(Icc)} kA` }] : []), ...r.pasos] : [];
   const todo = ok && r.cumpleTermico && r.cumplePdc !== false;
-  const live = `<div id="cs-live">${!ok ? `<div class="calc-res">Escribe ${d.ccModo === 'pcc' ? 'la potencia de cortocircuito y la tensión' : 'la Icc'} y un tiempo entre 0 y 5 s.</div>`
+  const live = `<div id="cs-live">${!ok ? `<div class="calc-res">Escribe ${d.ccModo === 'pcc' ? 'la potencia de cortocircuito y la tensión' : d.ccModo === 'tramos' ? 'la longitud de al menos un tramo' : 'la Icc'} y un tiempo entre 0 y 5 s.</div>`
     : `<div class="calc-res ${todo ? 'ok' : 'err'}">${ic(todo ? 'circle-check' : 'circle-x', 'sm')} ${todo ? 'Cumple' : 'No cumple'}: Icc = ${csNf(Icc)} kA · sección mínima ${csNf(r.Smin)} mm²</div>
       <ol class="cs-pasos">${pasos.map(p => `<li>${esc(p.t)}<code>${esc(p.f)}</code></li>`).join('')}</ol>
-      <h3 class="cs-h">Normativa aplicada</h3><ul class="cs-refs">${r.refs.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`}</div>`;
+      <h3 class="cs-h">Normativa aplicada</h3><ul class="cs-refs">${[...(rt ? rt.refs : []), ...r.refs].map(x => `<li>${esc(x)}</li>`).join('')}</ul>`}</div>`;
+  const secc = i => `<div><label for="cs-ccS${i}">Sección</label>${csSel('ccS' + i, CALCSEA.SECCIONES.map(x => [x, csNf(x, 1) + ' mm²']))}</div>`;
+  const tramosHTML = `<p class="small mut" style="margin:8px 0 0">Método de la Guía técnica (Anexo 3): Icc = 0,8·U/R con U = 230 V y R a 20 °C desde la CGP (ida y vuelta). Válido si el centro de transformación está fuera del edificio. Deja en blanco los tramos que no haya.</p>
+    ${[['LGA', 1], ['Derivación individual', 2], ['Circuito hasta el punto', 3]].map(([nombre, i]) => `<div class="grid4 cs-fields"><div oninput="csLive()">${csIn('ccL' + i, nombre + ' · longitud', 'm')}</div>${secc(i)}</div>`).join('')}`;
   return `<div class="card-box cs-box"><h3 style="margin:0 0 8px">${ic('flame', 'sm')} Cortocircuito</h3>
-    <label>Dato de partida</label>${csSeg('ccModo', [['pcc', 'Potencia de cortocircuito (la da la distribuidora)'], ['icc', 'Ya conozco la Icc']])}
-    <div class="grid4 cs-fields" oninput="csLive()">${d.ccModo === 'pcc' ? csIn('Pcc', 'Potencia de cortocircuito en el punto de BT', 'MVA', 'La da la distribuidora para ese punto; no uses la de la red de media tensión') + csIn('U', 'Tensión entre fases', 'V') : csIn('Icc', 'Intensidad de cortocircuito', 'kA')}
+    <label>Dato de partida</label>${csSeg('ccModo', [['tramos', 'Desde la CGP por tramos (Guía, Anexo 3)'], ['pcc', 'Potencia de cortocircuito'], ['icc', 'Ya conozco la Icc']])}
+    ${d.ccModo === 'tramos' ? tramosHTML : ''}
+    <div class="grid4 cs-fields" oninput="csLive()">${d.ccModo === 'tramos' ? '' : d.ccModo === 'pcc' ? csIn('Pcc', 'Potencia de cortocircuito en el punto de BT', 'MVA', 'La da la distribuidora para ese punto; no uses la de la red de media tensión') + csIn('U', 'Tensión entre fases', 'V') : csIn('Icc', 'Intensidad de cortocircuito', 'kA')}
       ${csIn('tcc', 'Duración del cortocircuito', 's', 'Orientativo: 0,1 s con PIA y 5 s con fusible')}</div>
     <div class="grid4 cs-fields"><div><label for="cs-Scc">Sección del cable</label>${csSel('Scc', CALCSEA.SECCIONES.map(x => [x, csNf(x, 1) + ' mm²']))}</div>
       <div><label for="cs-pdc">Poder de corte de la protección</label>${csSel('pdc', [['', 'No comprobar'], ...CS_PDC.map(x => [x, csNf(x, 1) + ' kA'])])}</div></div>
     <label>Conductor</label>${csSeg('mat', [['cu', 'Cobre'], ['al', 'Aluminio']])} ${csSeg('aisl', [['PVC', 'PVC (termoplástico)'], ['XLPE', 'XLPE / EPR']])}
     <h3 class="cs-h">Resultado</h3>${live}
-    <p class="small mut">La Icc al final de una línea (método de la Guía técnica, Anexo 3) llegará más adelante.</p><p class="small mut cs-pie">${CS_PIE}</p></div>`;
+<p class="small mut cs-pie">${CS_PIE}</p></div>`;
 }
 
 /* ---------- Fase 3 · resultados en vivo ---------- */
@@ -264,11 +271,11 @@ function csTierraHTML(){
   return `<div class="card-box cs-box"><h3 style="margin:0 0 8px">${ic('earth', 'sm')} Puesta a tierra</h3>
     <label>Electrodo</label>${csSeg('tTipo', Object.entries(CALCSEA.ELECTRODOS).map(([k, e]) => [k, e[0]]), "S.cs.d.tx=S.cs.d.tTipo==='conductor'?'':S.cs.d.tTipo==='pica'?'2':'';")}
     <label for="cs-rhoT">Terreno (resistividad media, ITC-BT-18 tabla 4)</label><select id="cs-rhoT" onchange="S.cs.d.rhoS=this.value;render()"><option value="">Elegir o escribir abajo…</option>${CALCSEA.RHO_TERRENOS.map(([t, v]) => `<option value="${v}" ${S.cs.d.rhoS === String(v) ? 'selected' : ''}>${esc(t)} · ${v} Ω·m</option>`).join('')}</select>
-    <div class="grid4 cs-fields" oninput="csLive()">${csIn('rhoS', 'Resistividad del terreno', 'Ω·m', 'Mejor si se mide con telurómetro')}${csIn('tx', E[4], E[5])}${csIn('tn', 'Electrodos en paralelo', 'nº', 'Separados al menos su longitud')}</div>
+    <div class="grid4 cs-fields" oninput="csLive()">${csIn('rhoS', 'Resistividad del terreno', 'Ω·m', 'Mejor si se mide con telurómetro')}${csIn('tx', E[4], E[5])}${csIn('tn', 'Electrodos en paralelo', 'nº', 'Separados al menos el doble de su longitud')}</div>
     <div class="grid4 cs-fields"><div><label for="cs-Ia">Sensibilidad del diferencial</label>${csSel('Ia', [['0.01', '10 mA'], ['0.03', '30 mA'], ['0.1', '100 mA'], ['0.3', '300 mA'], ['0.5', '500 mA'], ['1', '1 A']])}</div>
-      <div><label>Tensión de contacto límite</label>${csSeg('UL', [[24, '24 V · viviendas y locales húmedos'], [50, '50 V · locales secos']])}</div></div>
+      <div><label>Tensión de contacto límite</label>${csSeg('UL', [[24, '24 V · local o emplazamiento conductor'], [50, '50 V · demás casos']])}</div></div>
     <h3 class="cs-h">Resultado</h3><div id="cs-live">${live}</div>
-    <p class="small mut">Valores orientativos de resistencia máxima: viviendas 37 Ω, edificios con pararrayos 15 Ω.</p><p class="small mut cs-pie">${CS_PIE}</p></div>`;
+    <p class="small mut">Fórmulas y resistividades: ITC-BT-18 (tablas 4 y 5) y Guía técnica BT-18. Valores orientativos de resistencia máxima: viviendas 37 Ω, edificios con pararrayos 15 Ω.</p><p class="small mut cs-pie">${CS_PIE}</p></div>`;
 }
 
 function csReactivaHTML(){

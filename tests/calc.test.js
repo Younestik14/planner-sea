@@ -261,3 +261,13 @@ test('compensación de reactiva', () => {
   near(e.C_uF, 3 * r.C_uF, 1e-9);
   assert.equal(C.reactiva({ P_kW: 100, cos1: 0.95, cos2: 0.9, U: 400, conexion: 'estrella' }).Qc_kvar, 0);
 });
+
+// ======== Guía Anexo 3 y Guía BT-18 ========
+test('Icc por tramos: ejemplo de la Guía técnica, Anexo 3', () => {
+  const r = C.iccTramos({ U: 230, tramos: [{ L: 25, S: 95, mat: 'cu' }, { L: 15, S: 10, mat: 'cu' }] });
+  near(r.R, 0.0635, 0.0001); near(r.Icc_A, 2898, 1.5);
+});
+
+test('placa enterrada horizontal: R = 1,6·ρ/P (Guía BT-18)', () => {
+  assert.equal(C.tierra({ tipo: 'placaH', rho: 50, P: 4 }).R, 20);
+});

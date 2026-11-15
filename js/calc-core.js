@@ -349,24 +349,35 @@ const CALCSEA = (() => {
     return r;
   }
 
+  // Guía técnica REBT, Anexo 3: Icc = 0,8·U / R, U fase-neutro, R a 20 °C desde la CGP. El ejemplo de la guía suma ida y vuelta (2·L)
+  const RHO20 = { cu: 0.018, al: 0.029 };
+  function iccTramos({ U = 230, tramos }){
+    const pasos = [], R = tramos.reduce((s, t) => { const r = RHO20[t.mat] * 2 * t.L / t.S;
+      pasos.push({ t: `${t.nombre || 'Tramo'}: ${nf(t.L)} m de ${t.mat === 'cu' ? 'cobre' : 'aluminio'} de ${nf(t.S, 1)} mm² (ida y vuelta, a 20 °C)`, f: `R = ${nf(RHO20[t.mat], 3)}·2·${nf(t.L)} / ${nf(t.S, 1)} = ${nf(r, 4)} Ω` }); return s + r; }, 0);
+    const Icc_A = 0.8 * U / R;
+    pasos.push({ t: 'Resistencia total desde la CGP', f: `R = ${nf(R, 4)} Ω` }, { t: 'Corriente de cortocircuito máxima en ese punto', f: `Icc = 0,8·U / R = 0,8·${nf(U, 0)} / ${nf(R, 4)} = ${nf(Icc_A, 0)} A` });
+    return { R, Icc_A, pasos, refs: ['Guía técnica de aplicación del REBT, Anexo 3: cálculo de corrientes de cortocircuito'] };
+  }
+
   /* ---------- Puesta a tierra (ITC-BT-18) ---------- */
-  // ITC-BT-18 tabla 5 (fórmulas) y tabla 4 (resistividad media). No están en los PDF del Drive: pendientes de comprobar con la ITC-BT-18
+  // ITC-BT-18 tabla 5 (fórmulas) y tabla 4 (resistividad media), comprobadas con «guia_bt_18_oct05R1.pdf» (Guía BT-18, apdo. 9). Placa horizontal: R = 1,6·ρ/P
   const ELECTRODOS = {
     pica: ['Pica vertical', 'R = ρ / L', (rho, x) => rho / x, 'L', 'Longitud de la pica', 'm'],
-    placa: ['Placa enterrada', 'R = 0,8·ρ / P', (rho, x) => 0.8 * rho / x, 'P', 'Perímetro de la placa', 'm'],
+    placa: ['Placa enterrada vertical', 'R = 0,8·ρ / P', (rho, x) => 0.8 * rho / x, 'P', 'Perímetro de la placa', 'm'],
+    placaH: ['Placa enterrada horizontal', 'R = 1,6·ρ / P', (rho, x) => 1.6 * rho / x, 'P', 'Perímetro de la placa', 'm'],
     conductor: ['Conductor enterrado horizontalmente', 'R = 2·ρ / L', (rho, x) => 2 * rho / x, 'L', 'Longitud del conductor', 'm'],
   };
   const RHO_TERRENOS = [['Terrenos cultivables y fértiles, terraplenes compactos y húmedos', 50], ['Terraplenes cultivables poco fértiles y otros terraplenes', 500], ['Suelos pedregosos desnudos, arenas secas permeables', 3000]];
   function tierra({ tipo, rho, L, P, n = 1, Ia, UL }){
     const [nombre, formula, fn, k] = ELECTRODOS[tipo], x = k === 'P' ? P : L, R1 = fn(rho, x), R = R1 / n;
-    const pasos = [{ t: `${nombre} (ITC-BT-18, tabla 5)`, f: `${formula} = ${formula.includes('0,8') ? '0,8·' : formula.includes('2·') ? '2·' : ''}${nf(rho)} / ${nf(x)} = ${nf(R1)} Ω` }];
-    if (n > 1) pasos.push({ t: `${n} electrodos en paralelo, separados al menos su longitud (aproximación: R / n)`, f: `R = ${nf(R1)} / ${n} = ${nf(R)} Ω` });
+    const pasos = [{ t: `${nombre} (ITC-BT-18, tabla 5)`, f: `${formula} = ${formula.match(/= ([\d,]+)·/)?.[1] ? formula.match(/= ([\d,]+)·/)[1] + '·' : ''}${nf(rho)} / ${nf(x)} = ${nf(R1)} Ω` }];
+    if (n > 1) pasos.push({ t: `${n} electrodos en paralelo, separados al menos el doble de su longitud (Guía BT-18; aproximación: R / n)`, f: `R = ${nf(R1)} / ${n} = ${nf(R)} Ω` });
     const r = { R, pasos, refs: ['ITC-BT-18: instalaciones de puesta a tierra (tabla 5, resistencia de los electrodos)'] };
     if (Ia > 0 && UL > 0) {
       r.Uc = R * Ia; r.Rmax = UL / Ia; r.cumple = r.Uc <= UL + 1e-9;
       pasos.push({ t: `Tensión de contacto con un diferencial de ${nf(Ia * 1000, 0)} mA`, f: `Uc = R·Ia = ${nf(R)}·${nf(Ia, 3)} = ${nf(r.Uc)} V ${r.cumple ? '≤' : '>'} ${UL} V → ${r.cumple ? 'cumple' : 'NO cumple'}` });
       pasos.push({ t: 'Resistencia de tierra máxima admisible con ese diferencial', f: `R_máx = ${UL} / ${nf(Ia, 3)} = ${nf(r.Rmax)} Ω` });
-      r.refs.push('ITC-BT-18 / ITC-BT-24: tensión de contacto máxima 24 V en locales húmedos y viviendas, 50 V en locales secos');
+      r.refs.push('ITC-BT-18 apdo. 9: tensión de contacto máxima 24 V en local o emplazamiento conductor y 50 V en los demás casos');
     }
     return r;
   }
@@ -392,6 +403,6 @@ const CALCSEA = (() => {
   return { parseNum, SECCIONES, METODOS, DISP, izBase, fTemp, fAgrup, fCapas, fResist,
     intensidad, potencia, GAMMA, gamma, tServicio, caida, seccionPorCaida, LINEAS, CIRC_VIV, seccionProteccion,
     CALIBRES_PIA, CALIBRES_GG, proteccion, dimensionar, MANDA, nf,
-    CS_VIV, previsionEdificio, iccDesdePcc, K_CC, cortocircuito, TUBOS, tubo, ELECTRODOS, RHO_TERRENOS, tierra, reactiva };
+    CS_VIV, previsionEdificio, iccDesdePcc, K_CC, cortocircuito, iccTramos, TUBOS, tubo, ELECTRODOS, RHO_TERRENOS, tierra, reactiva };
 })();
 if (typeof module !== 'undefined') module.exports = CALCSEA;

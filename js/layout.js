@@ -6,7 +6,7 @@ function render(){
   const pending = S.profiles.filter(p => !p.approved && !p.is_admin).length;
   document.title = (unread ? `(${unread}) ` : '') + 'Planner SEA';
   document.body.classList.toggle('rail-pin', !!ls('railpin'));
-  const vkey = S.view + ':' + S.pid, changed = S._vkey && S._vkey !== vkey; S._vkey = vkey;
+  const vkey = S.view + ':' + S.pid, changed = S._vkey && S._vkey !== vkey, enter = S._vkey !== vkey; S._vkey = vkey;
   $('#app').innerHTML = `
   <header class="top">
     <button class="ico" onclick="toggleSide()" title="Fijar o plegar el menú" aria-label="Menú">${ic('panel-left', 'lg')}</button>
@@ -33,6 +33,7 @@ function render(){
     <button onclick="togglePanel('notifs')">${ic('bell', 'lg')}Avisos${unread ? `<b>${unread}</b>` : ''}</button>
   </nav>
   ${S.selMode && S.sel.size ? bulkBarHTML() : ''}`;
+  if (enter) $('main')?.classList.add('enter'); // las animaciones de entrada solo al cambiar de pantalla
   icons(); window.fxAfterRender?.();
   // al cambiar de pantalla, el contenido entra con un fundido corto (sin bloquear el pintado)
   if (changed && !matchMedia('(prefers-reduced-motion: reduce)').matches) $('main')?.animate([{ opacity: 0, transform: 'translateY(10px) scale(.992)', filter: 'blur(4px)' }, { opacity: 1, transform: 'none', filter: 'blur(0)' }], { duration: 380, easing: 'cubic-bezier(.2,.8,.2,1)' });

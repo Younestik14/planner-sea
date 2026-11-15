@@ -11,8 +11,12 @@ function ringHTML(pct, color, size = 56, stroke = 6, label = ''){
 
 // Tras cada repintado: numera hijos para la entrada escalonada y anima contadores [data-count]
 function fxAfterRender(root = document){
+  // título de la pantalla en la barra superior (aparece al hacer scroll)
+  const top = document.querySelector('header.top'), h = document.querySelector('main .page h1, main .ph h2');
+  if (top) { let t = top.querySelector('.top-title'); if (!t) { t = document.createElement('b'); t.className = 'top-title'; top.append(t); } t.textContent = h ? h.textContent.trim() : ''; }
   root.querySelectorAll('.stagger').forEach(g => [...g.children].forEach((c, i) => c.style.setProperty('--i', Math.min(i, 12))));
   if (reduceFx()) return;
+  if (!document.querySelector('main.enter')) return;
   root.querySelectorAll('[data-count]:not([data-counted])').forEach(el => {
     el.dataset.counted = '1';
     const to = +el.dataset.count, t0 = performance.now(), dur = 900;
